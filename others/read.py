@@ -55,5 +55,3 @@ read_h5py(dataset_path,dataset_name,info_file)
 
 # gam = sinkhorn(a,b,C,eps)
 # print(gam)
-
-

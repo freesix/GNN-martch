@@ -24,13 +24,13 @@ net_arg.add_argument(
 
 #数据的一些参数
 data_arg = add_argument_group("Data")
-data_arg.add_argument("--rawdata_path", type=str, default='rawdata', help="path for rawdata")
-data_arg.add_argument("--dataset_path", type=str, default='dataset', help="path for dataset")
-data_arg.add_argument("--desc_path", type=str, default='desc', help="path for descriptor dir")
+data_arg.add_argument("--rawdata_path", type=str, default='/mnt/h/0/code/codeData/GL3D-2/data/', help="path for rawdata")
+data_arg.add_argument("--dataset_path", type=str, default='/mnt/h/0/code/codeData/GL3D-2/dataset_dump_dir/', help="path for dataset")
+data_arg.add_argument("--desc_path", type=str, default='/mnt/h/0/code/codeData/GL3D-2/feature_dump_dir/', help="path for descriptor dir")
 data_arg.add_argument("--num_kpt", type=int, default=1000, help="用于训练的特征点数量")
 data_arg.add_argument("--input_normalize", type=str, default='img', help="输入特征的normalize方式，img or intrinsic")
 data_arg.add_argument("--data_aug", type=str2bool, default=True, help="是否使用特征点相关单应性增强")
-data_arg.add_argument("--desc_suffix", type=str, default='suffix', help="特征文件后缀")
+data_arg.add_argument("--desc_suffix", type=str, default='_root_1000.hdf5', help="特征文件后缀")
 
 
 #损失计算相关的一些参数
@@ -52,7 +52,7 @@ train_arg.add_argument("--save_intv", type=int, default=1000, help="总结的间
 train_arg.add_argument("--log_intv", type=int, default=100, help="log的间隔")
 train_arg.add_argument("--decay_rate", type=float, default=0.999996, help="学习率衰减率")
 train_arg.add_argument("--decay_iter", type=float, default=300000, help="学习率衰减轮次")
-train_arg.add_argument("--local_iter", type=int, default=0, help="分布式计算的局部序列")
+train_arg.add_argument("--local_rank", type=int, default=0, help="分布式计算的局部序列")
 train_arg.add_argument("--train_vis_floder", type=str, default='.', help="训练期间可视化目录")
 
 
