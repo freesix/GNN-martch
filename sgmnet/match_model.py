@@ -1,6 +1,29 @@
 import torch
 import torch.nn as nn
 
+#带权重的注意力传播
+class attention_propagantion(nn.Module):
+    def __init__(self,channel,head):
+        self.head = head #注意力头数
+        self.head_dim = channel//head #运用注意力多头机制后特征维度
+        self.query_filter,self.key_filter,self.value_filter=nn.Conv1d(channel,channel,kernel_size=1),nn.Conv1d(channel,channel,kernel_size=1), \
+                                                            nn.Conv1d(channel,channel,kernel_size=1)
+        self.mh_filter=nn.Conv1d(channel,channel,kernel_size=1)
+        self.cat_filter=nn.Sequential(nn.Conv1d(2*channel,2*channel,kernel_size=1), nn.SyncBatchNorm(2*channel), nn.ReLU(), 
+                                      nn.Conv1d(2*channel, channel, kernel_size=1))
+        
+    def forward(self,desc1,desc2,weight_v=None):
+        batch_size = desc1.shape[0]
+        query,key,value=self.query_filter(desc1).view(batch_size,self.head,self.head_dim,-1), self.key_filter(desc2).view(batch_size,
+                            self.head, self.head_dim,-1), self.value_filter(batch_size,self.head,self.head_dim,-1)
+        if weight_v is not None:
+            value = value*weight_v.view(batch_size,1,1,-1)
+        score=torch.softmax(torch.einsum('bhdn,bhdm->bhnm', query,key)/ self.head_dim **0.5, dim=-1)
+        add_value = torch.einsum('bhnm,bhdm->bhdn',score,value).reshape(batch_size,self.head_dim*self.head,-1)
+        add_value = self.nh_filter(add_value)
+        desc1_new=desc1+self.cat_filter(torch.cat([desc1,add_value],dim=1))
+        return desc1_new
+    
 class matcher(nn.module):
     def __init__(self,config):
         nn.Module.__init__(self)

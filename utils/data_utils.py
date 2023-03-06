@@ -2,32 +2,32 @@ import  numpy as np
 
 
 def norm_kpt(K, kp):
-    kp = np.concatenate([kp, np.ones([kp.shape[0], 1])], axis=1)
+    kp = np.concatenate([kp, np.ones([kp.shape[0], 1])], axis=1)#连接数组
     kp = np.matmul(kp, np.linalg.inv(K).T)[:, :2]
     return kp
     
 def unnorm_kp(K,kp):
-    kp = np.concatenate([kp, np.ones([kp.shape[0], 1])], axis=1)
+    kp = np.concatenate([kp, np.ones([kp.shape[0], 1])], axis=1) #给特征点坐标增加一列全1
     kp = np.matmul(kp,K.T)[:, :2]
     return kp
 
-def interpolate_depth(pos, depth):
-        # pos:[y,x]
-        ids = np.array(range(0, pos.shape[0]))
+def interpolate_depth(pos, depth): #depth深度信息，pos：增加尺度后的坐标信息
+        # pos:[y,x] #特征点的像素坐标系
+        ids = np.array(range(0, pos.shape[0]))#给坐标编id
     
         h, w = depth.shape
 
-        i = pos[:, 0]
-        j = pos[:, 1]
+        i = pos[:, 0] #y
+        j = pos[:, 1] #x
         valid_corner=np.logical_and(np.logical_and(i>0,i<h-1),np.logical_and(j>0,j<w-1))
         i,j=i[valid_corner],j[valid_corner]
         ids = ids[valid_corner]
 
-        i_top_left = np.floor(i).astype(np.int32)
+        i_top_left = np.floor(i).astype(np.int32)#np.floor()向下取整
         j_top_left = np.floor(j).astype(np.int32)
 
         i_top_right = np.floor(i).astype(np.int32)
-        j_top_right = np.ceil(j).astype(np.int32)
+        j_top_right = np.ceil(j).astype(np.int32) #np.ceil()向上取整
 
         i_bottom_left = np.ceil(i).astype(np.int32)
         j_bottom_left = np.floor(j).astype(np.int32)
@@ -71,13 +71,13 @@ def interpolate_depth(pos, depth):
         )
         return [interpolated_depth, ids]
 
-#映射
+#将图像1的特征点映射到图像2中
 def reprojection(depth_map,kpt,dR,dt,K1_img2depth,K1,K2):
     #warp kpt from img1 to img2
     def swap_axis(data):
         return np.stack([data[:, 1], data[:, 0]], axis=-1)
 
-    kp_depth = unnorm_kp(K1_img2depth,kpt)
+    kp_depth = unnorm_kp(K1_img2depth,kpt)#给图像坐标增加尺度信息
     uv_depth = swap_axis(kp_depth)
     z,valid_idx = interpolate_depth(uv_depth, depth_map)
 
@@ -93,10 +93,10 @@ def reprojection(depth_map,kpt,dR,dt,K1_img2depth,K1,K2):
 
 def reprojection_2s(kp1, kp2,depth1, depth2, K1, K2, dR, dt, size1,size2):
     #size:H*W
-    depth_size1,depth_size2 = [depth1.shape[0], depth1.shape[1]], [depth2.shape[0], depth2.shape[1]]
-    scale_1= [float(depth_size1[0]) / size1[0], float(depth_size1[1]) / size1[1], 1]
+    depth_size1,depth_size2 = [depth1.shape[0], depth1.shape[1]], [depth2.shape[0], depth2.shape[1]] #深度图像大小，长x宽
+    scale_1= [float(depth_size1[0]) / size1[0], float(depth_size1[1]) / size1[1], 1] #深度图除以实际图像尺度
     scale_2= [float(depth_size2[0]) / size2[0], float(depth_size2[1]) / size2[1], 1]
-    K1_img2depth, K2_img2depth = np.diag(np.asarray(scale_1)), np.diag(np.asarray(scale_2))
+    K1_img2depth, K2_img2depth = np.diag(np.asarray(scale_1)), np.diag(np.asarray(scale_2)) #以尺度向量生成一个3x3的对角矩阵
     kp1_2_proj, valid1_2 = reprojection(depth1, kp1, dR, dt, K1_img2depth,K1,K2)
     kp2_1_proj, valid2_1 = reprojection(depth2, kp2, dR.T, -np.matmul(dR.T, dt), K2_img2depth,K2,K1)
     return [kp1_2_proj,kp2_1_proj],[valid1_2,valid2_1]
