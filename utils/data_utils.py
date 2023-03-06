@@ -71,7 +71,7 @@ def interpolate_depth(pos, depth):
         )
         return [interpolated_depth, ids]
 
-
+#映射
 def reprojection(depth_map,kpt,dR,dt,K1_img2depth,K1,K2):
     #warp kpt from img1 to img2
     def swap_axis(data):

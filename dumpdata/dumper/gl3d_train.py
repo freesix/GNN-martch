@@ -114,6 +114,14 @@ class gl3d_train(BaseDumper):
             camera_index += 1
         return geom_dict
 
+
+    '''
+    pfm数据主要包含有两部分，头和元数据
+    头有三行：第一行标识灰度、彩色，PF表示彩色三通道，Pf表示灰度单通道
+            第二行标识图像的大小，行-列
+            第三行标识正数为大端存储，复数表示小端存储
+    元数据：紧密排列的浮点数，每个四个字节
+    '''
     # 读取图像深度信息文件
     def load_depth(self, file_path):  # 加载包含图像深度信息文件
         with open(os.path.join(file_path), 'rb') as fin:
@@ -122,15 +130,14 @@ class gl3d_train(BaseDumper):
             height = None
             scale = None
             data_type = None
-            header = str(fin.readline().decode('UTF-8')).rstrip()
+            header = str(fin.readline().decode('UTF-8')).rstrip() #readline()以循环的方式读取一行，rstrip()未指定参数则去除右边的空格或者换行，lstrip()与之相反
             if header == 'PF':
                 color = True
             elif header == 'Pf':
                 color = False
             else:
                 raise Exception('Not a PFM file.')
-            dim_match = re.match(r'^(\d+)\s(\d+)\s$',
-                                 fin.readline().decode('UTF-8'))
+            dim_match = re.match(r'^(\d+)\s(\d+)\s$',fin.readline().decode('UTF-8')) #正则表达式匹配
             if dim_match:
                 width, height = map(int, dim_match.groups())
             else:
@@ -141,10 +148,10 @@ class gl3d_train(BaseDumper):
             else:
                 data_type = '>f'  # big-endian
             data_string = fin.read()
-            data = np.fromstring(data_string, data_type)
-            shape = (height, width, 3) if color else (height, width)
-            data = np.reshape(data, shape)
-            data = np.flip(data, 0)
+            data = np.fromstring(data_string, data_type) #读取元数据，三行头数据已经被读取了
+            shape = (height, width, 3) if color else (height, width) #数据的形状
+            data = np.reshape(data, shape) 
+            data = np.flip(data, 0) #按照指定轴翻转数据
         return data
 
     #
@@ -180,7 +187,7 @@ class gl3d_train(BaseDumper):
         geom_dict=self.load_geom(seq) #读取包含图像几何信息文件
             
 
-        #检查是否已经存在
+        #检查是否已经存在，如果路径下已经存有文件则退出下面的存储步骤
         if os.path.exists(os.path.join(self.config['dataset_dump_dir'],seq,'pair_num.txt')):
             return
 
@@ -242,84 +249,6 @@ class gl3d_train(BaseDumper):
         #写入信息
         self.dump_info(seq,info)
 
-
-
-    # 对数据进行一定格式存储整理
-    def format_seq(self, index):
-        seq = self.seq_list[index]
-        seq_dir = os.path.join(os.path.join(self.config['rawdata_dir'], 'data', seq))
-        basename_list = np.loadtxt(os.path.join(seq_dir, 'basenames.txt'), dtype=str)  # 读取文件名
-        pair_list = np.loadtxt(os.path.join(seq_dir, 'geolabel', 'common_track.txt'), dtype=float)[:, :2].astype(int)  # 读取匹配对列表
-        overlap_score = np.loadtxt(os.path.join(seq_dir, 'geolabel', 'common_track.txt'), dtype=float)[:, 2]  # 读取配对图片之间的重叠率
-        geom_dict = self.load_geom(seq)  # 读取图像的几何结构数据
-
-        # 检查info信息是否存在
-        if os.path.exists(os.path.join(self.config['dataset_dump_dir'], seq, 'pair_num.txt')):
-            return
-        angle_list = []  # geometry信息中的角度
-        # 滤除一些匹配点
-        for cur_pair in pair_list:
-            pair_index1, pair_index2 = cur_pair[0], cur_pair[1]
-            geo1, geo2 = geom_dict[pair_index1], geom_dict[pair_index2]
-            dR = np.dot(geo2['R'], geo1['R'].T)
-            q = transformations.quaternion_from_matrix(dR)
-            angle_list.append(math.acos(q[0]) * 2 * 180 / math.pi)
-        angle_list = np.asarray(angle_list)
-        mask_survive = np.logical_and(np.logical_and(angle_list > self.config['angle_th'][0], angle_list < self.config['angle_th'][1]),
-                                      np.logical_and(overlap_score > self.config['overlap_th'][0], overlap_score < self.config['overlap_th'][1]))
-        pair_list = pair_list[mask_survive]
-        if len(pair_list) < 100:
-            print(seq, len(pair_list))
-
-        #
-        shuffled_pair_list = np.random.permutation(pair_list)
-        sample_target = min(
-            self.config['pairs_per_seq'], len(shuffled_pair_list))
-        sample_number = 0
-
-        info = {'dR': [], 'dt': [], 'K1': [], 'K2': [], 'img_path1': [], 'img_path2': [], 'fea_path1': [], 'fea_path2': [], 'size1': [], 'size2': [],
-                'corr': [], 'incorr1': [], 'incorr2': [], 'pair_num': []}
-        for cur_pair in shuffled_pair_list:
-            pair_index1, pair_index2 = cur_pair[0], cur_pair[1] #配对点索引
-            geo1, geo2 = geom_dict[pair_index1], geom_dict[pair_index2]
-            dR = np.dot(geo2['R'], geo1['R'].T)
-            t1, t2 = geo1['T'].reshape([3, 1]), geo2['T'].reshape([3, 1])
-            dt = t2 - np.dot(dR, t1)
-            K1, K2 = geo1['K'], geo2['K']
-            size1, size2 = geo1['size'], geo2['size']
-
-            basename1, basename2 = basename_list[pair_index1], basename_list[pair_index2]
-            img_path1, img_path2 = os.path.join(seq, 'undist_images', basename1+'.jpg'), os.path.join(seq, 'undist_images', basename2+'.jpg')
-            fea_path1, fea_path2 = os.path.join(seq, basename1+'.jpg'+'_'+self.config['extractor']['name']+'_'+str(self.config['extractor']
-                                                                                                                   ['num_kpt'])+'.hdf5'),\
-                os.path.join(seq, basename2+'.jpg'+'_'+self.config['extractor']['name']+'_'+str(
-                    self.config['extractor']['num_kpt'])+'.hdf5')
-
-            with h5py.File(os.path.join(self.config['feature_dump_dir'], fea_path1), 'r') as fea1,\
-                    h5py.File(os.path.join(self.config['feature_dump_dir'], fea_path2), 'r') as fea2:
-                desc1, desc2 = fea1['descriptors'][()], fea2['descriptors'][()]
-                kpt1, kpt2 = fea1['keypoints'][()], fea2['keypoints'][()]
-                depth_path1, depth_path2 = os.path.join(self.config['rawdata_dir'], 'data', seq, 'depths', basename1+'.pfm'),\
-                    os.path.join(self.config['rawdata_dir'],
-                                 'data', seq, 'depths', basename2+'.pfm')
-                depth1, depth2 = self.load_depth(
-                    depth_path1), self.load_depth(depth_path2)
-                corr_index, incorr_index1, incorr_index2 = data_utils.make_corr(kpt1[:, :2], kpt2[:, :2], desc1, desc2, depth1, depth2, K1, K2, dR, dt, size1, size2,
-                                                                                self.config['corr_th'], self.config['incorr_th'], self.config['check_desc'])
-
-            if len(corr_index) > self.config['min_corr'] and len(incorr_index1) > self.config['min_incorr'] and len(incorr_index2) > self.config['min_incorr']:
-                info['corr'].append(corr_index), info['incorr1'].append(
-                    incorr_index1), info['incorr2'].append(incorr_index2)
-                info['dR'].append(dR), info['dt'].append(dt), info['K1'].append(K1), info['K2'].append(
-                    K2), info['img_path1'].append(img_path1), info['img_path2'].append(img_path2)
-                info['fea_path1'].append(fea_path1), info['fea_path2'].append(
-                    fea_path2), info['size1'].append(size1), info['size2'].append(size2)
-                sample_number += 1
-            if sample_number == sample_target:
-                break
-
-        info['pair_num'] = sample_number
-        self.dump_info(seq, info)
 
 
 
