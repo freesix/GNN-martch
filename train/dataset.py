@@ -72,6 +72,7 @@ class Offline_Dataset(data.Dataset):
 
         with h5py.File(os.path.join(self.config.dataset_path, seq, 'info.h5py'), 'r') as data:
             R,t = data['dR'][str(index_within_seq)][()], data['dt'][str(index_within_seq)][()]
+            #egt组合变换矩阵
             egt = np.reshape(np.matmul(np.reshape(evaluation_utils.np_skew_symmetric(t.astype('float64').reshape(1, 3)), (3, 3)), np.reshape(R.astype('float64'), (3, 3))), (3, 3))
             egt =egt / np.linalg.norm(egt)
             K1, K2 = data['K1'][str(index_within_seq)][()], data['K2'][str(index_within_seq)][()]
@@ -91,15 +92,15 @@ class Offline_Dataset(data.Dataset):
                 #正则化特征点
             if self.config.input_normalize=='intrinsic':  
                 x1, x2 = np.concatenate([kpt1, np.ones([kpt1.shape(0), 1])], axis=-1),\
-                         np.concatenate([kpt2, np.ones([kpt2.shape[0], 1])], axis=-1) #np.concatenate用于按指定维度拼接数组
-                x1, x2 = np.matmul(np.linalg.inv(K1), x1.T).T[:, :2], np.matmul(np.linalg.inv(K2), x2.T).T[:, :2]
+                         np.concatenate([kpt2, np.ones([kpt2.shape[0], 1])], axis=-1) #np.concatenate用于按指定维度拼接数组,这里是给特征点坐标增加一维，转换为齐次坐标系
+                x1, x2 = np.matmul(np.linalg.inv(K1), x1.T).T[:, :2], np.matmul(np.linalg.inv(K2), x2.T).T[:, :2] #特征点坐标转换为相机坐标系
             elif self.config.input_normalize=='img':
                 x1, x2 = (kpt1-size1/2)/size1, (kpt2-size2/2)/size2
                 S1_inv, S2_inv=np.asarray([[size1[0], 0, 0.5*size1[0]], [0,size1[1], 0.5*size1[1]], [0, 0, 1]]),\
                                np.asarray([[size2[0], 0, 0.5*size2[0]], [0,size2[1], 0.5*size2[1]], [0, 0, 1]])
-                M1, M2 = np.matmul(np.linalg.inv(K1), S1_inv), np.matmul(np.linalg.inv(K2), S2_inv)
+                M1, M2 = np.matmul(np.linalg.inv(K1), S1_inv), np.matmul(np.linalg.inv(K2), S2_inv) #将内参矩阵和像素坐标系与图像坐标系的转换矩阵相乘
                 egt = np.matmul(np.matmul(M2.transpose(), egt), M1)
-                egt = egt / np.linalg.norm(egt)
+                egt = egt / np.linalg.norm(egt) 
             else:
                 raise NotImplementedError
             

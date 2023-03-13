@@ -6,6 +6,7 @@ import re
 import numpy as np
 import h5py
 from tqdm import trange
+import torch
 from torch.multiprocessing import Pool
 from .base_dumper import BaseDumper  # 载入原始数据处理的基本类，BaseDumper中是数据处理的基本方法，而后续
 # 的继承类gl3d_train等是针对不同数据集差异化的方法
@@ -49,23 +50,7 @@ class gl3d_train(BaseDumper):
             self.img_seq += cur_img_seq
             self.dump_seq += cur_dump_seq
 
-    #一次性读取一个文件(暂时实现读取特征点的值和坐标)
-    def read_feature(self,file,image):
-        feature_seq = self.dump_seq
-        for seq in feature_seq:
-            if os.path.join(self.config['feature_dump_dir'],file,image+'.jpg'+'_'+self.config['extractor']['name']+'_'+str(self.config['extractor']['num_kpt'])
-                        + '.hdf5') == seq:
-                with h5py.File(seq, 'r') as f:
-                    desc1 = f['desc1']
-                    desc2 = f['desc2']
-                    kpt1 = f['kpt1']
-                    kpt2 = f['kpt2']
-        return desc1, desc2, kpt1, kpt2 
-    
-
-
-
-
+   
         
     # 创建dump相关文件夹
     def format_dump_folder(self):
@@ -175,7 +160,28 @@ class gl3d_train(BaseDumper):
         with open(os.path.join(self.config['dataset_dump_dir'], seq, 'pair_num.txt'), 'w') as f:
             f.write(str(info['pair_num']))
 
-
+#用来计算领域范围和需要聚合的特征点
+    def domain_computer(self,kpt1,kpt2,desc1,desc2):
+        kpt1,kpt2 = kpt1[:,:2], kpt2[:,:2]
+        dis_mat1=np.sum((np.expand_dims(kpt1,axis=1) - np.expand_dims(kpt1,axis=0))**2, axis=-1)**0.5
+        dis_mat2=np.sum((np.expand_dims(kpt2,axis=1) - np.expand_dims(kpt2,axis=0))**2, axis=-1)**0.5
+        desc1_nerbh=[]
+        desc2_nerbh=[]
+        for i in range(len(dis_mat1)):
+            dis_index=np.argsort(dis_mat1[i,:])[self.num_nerbh:] #取出距离最近的num_nerbh的索引
+            dis_value=np.take(dis_mat1[i,:], dis_index, axis=0) #取出距离最近的num_nerbh个值
+            for j, dis in enumerate(dis_value): 
+                if dis > self.radius_nerbh: #如果特征点距离超出了半径，则舍弃用最近两点距离代替
+                    dis_index[j] = dis_index[1] 
+            desc1_nerbh.append(desc1[dis_index,:])
+            
+        for i in range(len(dis_mat2)):
+            dis_index=np.argsort(dis_mat2[i,:])[self.num_nerbh:] #取出距离最近的num_nerbh的索引
+            dis_value=np.take(dis_mat2[i,:], dis_index, axis=0) #取出距离最近的num_nerbh个值
+            for j, dis in enumerate(dis_value): 
+                if dis > self.radius_nerbh: #如果特征点距离超出了半径，则舍弃用最近两点距离代替
+                    dis_index[j] = dis_index[1] 
+            desc2_nerbh.append(desc2[dis_index,:])
 
     # 整理数据
     def format_seq(self,index):
@@ -232,6 +238,7 @@ class gl3d_train(BaseDumper):
                 h5py.File(os.path.join(self.config['feature_dump_dir'],fea_path2),'r') as fea2:
                 desc1,desc2=fea1['descriptors'][()],fea2['descriptors'][()]
                 kpt1,kpt2=fea1['keypoints'][()],fea2['keypoints'][()]
+#在这里调用计算领域大小方法
                 depth_path1,depth_path2=os.path.join(self.config['rawdata_dir'],'data',seq,'depths',basename1+'.pfm'),\
                                         os.path.join(self.config['rawdata_dir'],'data',seq,'depths',basename2+'.pfm')
                 depth1,depth2=self.load_depth(depth_path1),self.load_depth(depth_path2)
