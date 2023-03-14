@@ -2,7 +2,7 @@ import  numpy as np
 
 
 def norm_kpt(K, kp):
-    kp = np.concatenate([kp, np.ones([kp.shape[0], 1])], axis=1)#连接数组
+    kp = np.concatenate([kp, np.ones([kp.shape[0], 1])], axis=1)#转换为齐次坐标
     kp = np.matmul(kp, np.linalg.inv(K).T)[:, :2]  #将kp除以尺度变换信息K
     return kp
     
@@ -22,7 +22,7 @@ def interpolate_depth(pos, depth): #depth深度信息，pos：增加尺度后的
         valid_corner=np.logical_and(np.logical_and(i>0,i<h-1),np.logical_and(j>0,j<w-1)) #排除实际图像映射到深度图像后的特征点坐标不在深度图坐标范围内的特征点
         i,j=i[valid_corner],j[valid_corner]
         ids = ids[valid_corner]
-
+        #将特征点坐标值分别向上向下取整
         i_top_left = np.floor(i).astype(np.int32)#np.floor()向下取整
         j_top_left = np.floor(j).astype(np.int32)
 
@@ -35,10 +35,10 @@ def interpolate_depth(pos, depth): #depth深度信息，pos：增加尺度后的
         i_bottom_right = np.ceil(i).astype(np.int32)
         j_bottom_right = np.ceil(j).astype(np.int32)
         
-        #特征点映射到深度图中四个点的的坐标,通俗来说
+        #特征点映射到深度图中某个体素所对应的深度,通俗来说就是将落在此个体素内特征点的深度用对应四边形四个角所在深度表示
         depth_top_left,depth_top_right,depth_down_left,depth_down_right=depth[i_top_left, j_top_left],depth[i_top_right, j_top_right],\
                                                              depth[i_bottom_left, j_bottom_left],depth[i_bottom_right, j_bottom_right]
-        #排除不在范围内的点
+        #排除不正确的深度信息
         valid_depth = np.logical_and(
             np.logical_and(
                 depth_top_left > 0,
@@ -55,14 +55,14 @@ def interpolate_depth(pos, depth): #depth深度信息，pos：增加尺度后的
 
         i,j,i_top_left,j_top_left=i[valid_depth],j[valid_depth],i_top_left[valid_depth],j_top_left[valid_depth]
         
-        # Interpolation
+        # 插值(分别计算特征点和所在深度体素的四个角围成的四个矩形的面积)
         dist_i_top_left = i - i_top_left.astype(np.float32)
         dist_j_top_left = j - j_top_left.astype(np.float32)
         w_top_left = (1 - dist_i_top_left) * (1 - dist_j_top_left)
         w_top_right = (1 - dist_i_top_left) * dist_j_top_left
         w_bottom_left = dist_i_top_left * (1 - dist_j_top_left)
         w_bottom_right = dist_i_top_left * dist_j_top_left
-
+        #根据四个矩形面积赋予不同权重计算特征点的平均深度
         interpolated_depth = (
             w_top_left * depth_top_left +
             w_top_right * depth_top_right+
@@ -80,11 +80,11 @@ def reprojection(depth_map,kpt,dR,dt,K1_img2depth,K1,K2):
     uv_depth = swap_axis(kp_depth) #(x,y)->(y,x)
     z,valid_idx = interpolate_depth(uv_depth, depth_map)#z:深度，对应特征点id
 
-    norm_kp=norm_kpt(K1,kpt)
-    norm_kp_valid = np.concatenate([norm_kp[valid_idx, :], np.ones((len(valid_idx), 1))], axis=-1)
+    norm_kp=norm_kpt(K1,kpt) 
+    norm_kp_valid = np.concatenate([norm_kp[valid_idx, :], np.ones((len(valid_idx), 1))], axis=-1) #转换为齐次坐标
     xyz_valid = norm_kp_valid * z.reshape(-1, 1)
-    xyz2 = np.matmul(xyz_valid, dR.T) + dt.reshape(1, 3)
-    xy2 = xyz2[:, :2] / xyz2[:, 2:]
+    xyz2 = np.matmul(xyz_valid, dR.T) + dt.reshape(1, 3) #世界坐标系
+    xy2 = xyz2[:, :2] / xyz2[:, 2:] #归一化(用x,y坐标除以最后一个维度)
     kp2, valid = np.ones(kpt.shape) * 1e5, np.zeros(kpt.shape[0])
     kp2[valid_idx] = unnorm_kp(K2,xy2)
     valid[valid_idx] = 1
@@ -104,14 +104,14 @@ def make_corr(kp1,kp2,desc1,desc2,depth1,depth2,K1,K2,dR,dt,size1,size2,corr_th,
     #make reprojection
     [kp1_2,kp2_1],[valid1_2,valid2_1]=reprojection_2s(kp1,kp2,depth1,depth2,K1,K2,dR,dt,size1,size2)
     num_pts1, num_pts2 = kp1.shape[0], kp2.shape[0]
-    #reprojection error
+    #计算映射前后对应点的距离之差
     dis_mat1=np.sqrt(abs((kp1 ** 2).sum(1,keepdims=True) + (kp2_1 ** 2).sum(1,keepdims=False)[np.newaxis] - 2 * np.matmul(kp1, kp2_1.T)))
     dis_mat2 =np.sqrt(abs((kp2 ** 2).sum(1,keepdims=True) + (kp1_2 ** 2).sum(1,keepdims=False)[np.newaxis] - 2 * np.matmul(kp2,kp1_2.T)))
     repro_error = np.maximum(dis_mat1,dis_mat2.T) #n1*n2
     
     # find corr index
-    nn_sort1 = np.argmin(repro_error, axis=1)
-    nn_sort2 = np.argmin(repro_error, axis=0)
+    nn_sort1 = np.argmin(repro_error, axis=1)#返回每一行最小元素索引
+    nn_sort2 = np.argmin(repro_error, axis=0) #返回每一列最小元素索引
     mask_mutual = nn_sort2[nn_sort1] == np.arange(kp1.shape[0])
     mask_inlier=np.take_along_axis(repro_error,indices=nn_sort1[:,np.newaxis],axis=-1).squeeze(1)<corr_th
     mask = mask_mutual&mask_inlier
