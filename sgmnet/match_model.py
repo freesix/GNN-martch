@@ -26,32 +26,58 @@ def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc
     return seed_index1,seed_index2,pos_dismat1,pos_dismat2
 
 
-#领域聚合
-def domain(seed_index1,seed_index2,pos_dismat1,pos_dismat2,domain_topk,domain_radiues,desc1,desc2):
-    seed_dismat1, seed_dismat2=pos_dismat1.gather(dim=-1,index=seed_index1.unsqueeze(1).expand(-1,1000,-1)),\
-                                     pos_dismat2.gather(dim=-1,index=seed_index2.unsqueeze(1).expand(-1,1000,-1))
-    values1, indices1 = torch.topk(seed_dismat1,k=domain_topk,largest=False,dim=1,sorted=True)
-    values2, indices2 = torch.topk(seed_dismat2,k=domain_topk,largest=False,dim=1,sorted=True)
-    dis1_radiues,dis2_radiues=torch.max(seed_dismat1)*domain_radiues,torch.max(seed_dismat2)*domain_radiues
-
-    values1_nearest, values2_nearest=values1[:,1,:].unsqueeze(1).expand(-1,10,-1), values2[:,1,:].unsqueeze(1).expand(-1,10,-1)
+#领域聚合        
+def domain(pos_dismat1,pos_dismat2,domain_topk,domain_radiues,desc1,desc2):
+    # seed_dismat1, seed_dismat2=pos_dismat1.gather(dim=-1,index=seed_index1.unsqueeze(1).expand(-1,1000,-1)),\
+    #                                  pos_dismat2.gather(dim=-1,index=seed_index2.unsqueeze(1).expand(-1,1000,-1))
+    values1, indices1 = torch.topk(pos_dismat1,k=domain_topk,largest=False,dim=1,sorted=True) #鑾峰彇姣忎釜鎻忚堪瀛愭渶杩戠殑鍗佷釜閭昏繎鎻忚堪瀛愶紝骞舵寜璺濈浠庡皬鍒板ぇ鎺掑簭
+    values2, indices2 = torch.topk(pos_dismat2,k=domain_topk,largest=False,dim=1,sorted=True)
+    dis1_radiues,dis2_radiues=torch.max(pos_dismat1)*domain_radiues,torch.max(pos_dismat2)*domain_radiues #鑾峰彇閭诲煙鍗婂緞闃堝€?
+    # 离描述子最近一个邻近描述子的距离值和索引
+    # values1_nearest, values2_nearest=values1[:,1,:].unsqueeze(1).expand(-1,10,-1), values2[:,1,:].unsqueeze(1).expand(-1,10,-1)
     indices1_nearest, indices2_nearest=indices1[:,1,:].unsqueeze(1).expand(-1,10,-1), indices2[:,1,:].unsqueeze(1).expand(-1,10,-1)
-    
-    values1[values1>dis1_radiues]=values1_nearest[values1>dis1_radiues]
-    values2[values2>dis2_radiues]=values2_nearest[values2>dis2_radiues]
+    # 将不在领域半径内的描述子替换成最邻近的那一个描述子
+    # values1[values1>dis1_radiues]=values1_nearest[values1>dis1_radiues]
+    # values2[values2>dis2_radiues]=values2_nearest[values2>dis2_radiues]
     indices1[values1>dis1_radiues]=indices1_nearest[values1>dis1_radiues]
     indices2[values2>dis2_radiues]=indices2_nearest[values2>dis2_radiues]
-        
+
     desc1_domain=torch.tensor([],device='cuda')
     for i in range(indices1.shape[-1]):
         domain_desc1=desc1.gather(dim=-1, index=indices1[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
         domain_desc1=domain_desc1.unsqueeze(-1)
-        desc1_domain=torch.cat((desc1_domain,domain_desc1),dim=-1)
-    return desc1_domain
-        
-            
+        desc1_domain=torch.cat([desc1_domain,domain_desc1],dim=-1)
+    desc2_domain=torch.tensor([],device='cuda')
+    for i in range(indices1.shape[-1]):
+        domain_desc2=desc2.gather(dim=-1, index=indices2[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
+        domain_desc2=domain_desc2.unsqueeze(-1)
+        desc2_domain=torch.cat([desc2_domain,domain_desc2],dim=-1)
+    return desc1_domain, desc2_domain            
     
-    
+
+# 领域注意力聚合
+class domain_attention(nn.Module):
+    def __init__(self, channel):
+        nn.Module.__init__(self)
+        self.channel=channel
+        self.query_filter,self.key_filter,self.value_filter=nn.Conv2d(channel,channel,kernel_size=(1,1)),nn.Conv2d(channel,channel,kernel_size=(1,1)),\
+                                                            nn.Conv2d(channel,channel,kernel_size=(1,1))
+        self.nh_filter=nn.Conv2d(channel,channel,kernel_size=(1,1))
+        self.cat_filter=nn.Sequential(nn.Conv2d(2*channel,2*channel,kernel_size=(1,1)), nn.SyncBatchNorm(2*channel), nn.ReLU(),
+                                      nn.Conv2d(2*channel,channel,kernel_size=(1,1)))
+
+    def forward(self,desc,weight_v=None):
+        batch_size=desc.shape[0]
+        query_desc=desc[:,:,0,:].unsqueeze(-2)
+        query,key,value=self.query_filter(query_desc),self.key_filter(desc),self.value_filter(desc)
+        if weight_v is not None:
+            value=value*weight_v.view(batch_size,1,1,-1)
+        socre=torch.softmax(torch.einsum('bctn,bckn->bctk',query,key),dim=-1)
+        add_value=torch.einsum('bctk,bckn->bctn',socre,value)
+        add_value=self.nh_filter(add_value)
+        desc_new=query_desc+self.cat_filter(torch.cat([query_desc,add_value],dim=1))
+        return desc_new.squeeze(-2)
+
     
 
 
@@ -142,6 +168,8 @@ class matcher(nn.module):
         self.seedlayer=config.seedlayer # 种子层数
         self.layer_num=config.layer_num #网络层数
         self.sink_iter=config.sink_iter #sinkhorn算法迭代次数
+        self.domain_topk=config.topk
+        self.domain_radiues=config.radiues
 
         # 坐标位置编码 
         self.position_encoder = nn.Sequential(nn.Conv1d(3, 32, kernel_size=1) if config.use_score_encoding else nn.Conv1d(2, 32, kernel_size=1),
@@ -150,6 +178,9 @@ class matcher(nn.module):
                                               nn.Conv1d(64, 128, kernel_size=1), nn.SyncBatchNorm(128), nn.ReLU(),
                                               nn.Conv1d(128, 256, kernel_size=1), nn.SyncBatchNorm(256), nn.ReLU(),
                                               nn.Conv1d(256, config.net_channels, kernel_size=1))
+        
+        # 领域聚合
+        self.domain_encoder=domain_attention(config.net_channels)
         
         self.hybrid_block=nn.Sequential(*[hybrid_block(config.net_channels, config.head) for _ in range(config.layer_num)])
         self.final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
@@ -178,9 +209,21 @@ class matcher(nn.module):
         
         # 位置编码
         desc1,desc2=desc1.transpose(1,2), desc2.transpose(1,2) #交换channel和feature of number，遵循torch默认channel在前
+        #获取领域的描述子们
+        domain_desc1,domain_desc2=domain(pos_dismat1,pos_dismat2,self.domain_topk,self.domain_radiues,desc1,desc2)
+        #领域聚合
+        desc1_embedding, desc2_embedding=self.domain_encoder(domain_desc1), self.domain_encoder(domain_desc2)
+        desc1_embedding, desc2_embedding=torch.nn.functional.normalize(desc1_embedding,dim=-1),torch.nn.functional.normalize(desc2_embedding,dim=-1)
+        
         if not self.use_score_encoding:
             encode_x1,encode_x2 = encode_x1[:,:,:2], encode_x2[:,:,:2]
         encode_x1,encode_x2 = encode_x1.transpose(1,2), encode_x2.transpose(1,2)
+        
         x1_pos_embedding, x2_pos_embedding =self.position_encoder(encode_x1), self.position_encoder(encode_x2) 
+        x1_pos_embedding,x2_pos_embedding=torch.nn.functional.normalize(x1_pos_embedding,dim=-1),torch.nn.functional.normalize(x2_pos_embedding,dim=-1)
+        aug_desc1,aug_desc2=desc1_embedding+x1_pos_embedding+desc1, desc2_embedding+x2_pos_embedding+desc2
+        
+
+        
 
             
