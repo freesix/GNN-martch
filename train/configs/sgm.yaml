@@ -10,3 +10,5 @@ conf_bar: [1,0.1]
 sink_iter: [10,100]
 detach_iter: 140000
 p_th: 0.2
+domain_topk: 10
+domain_radiues: 0.01
