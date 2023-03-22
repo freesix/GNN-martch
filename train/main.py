@@ -5,12 +5,14 @@ import os
 import torch
 import torch.utils.data 
 import torch.distributed as dist
-
+from sgmnet.match_model import matcher as SGM_Modle
 
 
 def main(config, model_config):
-    # if config.modle_name=='SGM': #选择模型(如果有多个模型)
-        # model_config = SGM_Modle(model_config)
+    if config.modle_name=='SGM': #选择模型(如果有多个模型)
+        model_config = SGM_Modle(model_config)
+
+        
     #初始化多线程计算
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '5678'
