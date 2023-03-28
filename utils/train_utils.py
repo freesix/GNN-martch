@@ -44,7 +44,7 @@ def get_rnd_homography(batch_size, pert_ratio=0.25):
     homo_tower=[]
     for _ in range(batch_size):
         rnd_pert = np.random.uniform(-2*pert_ratio, 2*pert_ratio, (4,2)).astype(np.float32) #产生一个指定范围内指定大小均匀分布数据
-        print(rnd_pert)
+        # print(rnd_pert)
         pert_corners = corners + rnd_pert
         M = cv2.getPerspectiveTransform(corners, pert_corners) #计算透视变换矩阵，输入参数分别为源和目标图像的四个点,返回一个3x3的变换矩阵
         homo_tower.append(M)
