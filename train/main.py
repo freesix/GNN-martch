@@ -8,8 +8,8 @@ import torch.utils.data
 import torch.distributed as dist
 from sgmnet.match_model import matcher as SGM_Modle
 from train import train
-torch.backends.cudnn.enable=True
-torch.backends.cudnn.benchmark=True
+# torch.backends.cudnn.enable=True
+# torch.backends.cudnn.benchmark=True
 
 def main(config, model_config):
     if config.model_name=='SGM': #选择模型(如果有多个模型)
@@ -29,7 +29,9 @@ def main(config, model_config):
     #初始化多线程计算组
     dist.init_process_group(backend='nccl', init_method='env://', rank=0, world_size=int(os.environ['WORLD_SIZE']) if 
                             'WORLD_SIZE' in os.environ else 1)    
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.local_rank])
+    # 这里的find_unused_parameters参数是因为网络层中有些参数未参与反向传播，后续设计将其考虑进去
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.local_rank],find_unused_parameters=True)
+    
 
     if config.local_rank==0:
         os.system('nvidia-smi')

@@ -15,7 +15,7 @@ def sinkhorn(M,r,c,iteration):
 
 def sink_algorithm(M,dustbin,iteration):
     M = torch.cat([M, dustbin.expand([M.shape[0], M.shape[1], 1])], dim=-1)
-    # M = torch.cat([M, dustbin.expand([M.shape[0], 1, M.shape[2]])], dim=-2)
+    M = torch.cat([M, dustbin.expand([M.shape[0], 1, M.shape[2]])], dim=-2)
     r = torch.ones([M.shape[0], M.shape[1] - 1],device='cuda')
     r = torch.cat([r, torch.ones([M.shape[0], 1],device='cuda') * M.shape[1]], dim=-1)
     c = torch.ones([M.shape[0], M.shape[2] - 1],device='cuda')
@@ -32,16 +32,12 @@ def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc
         mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device='cuda')
         match_score[mask_not_mutual]=-1
     # 非极大值抑制算法
-    print(x1.shape)
-    print(x2.shape)
     pos_dismat1=((x1.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x1.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x1@x1.transpose(1,2))).abs_().sqrt_() #abs_()和abs()的区别在于abs_()会在本地创建一个张量，改变张量本身的值
     x2=x2.gather(index=nn_index1.unsqueeze(-1).expand(-1,-1,2),dim=1) #获取x2在nn_index1索引中的值
     pos_dismat2=((x2.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x2.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x2@x2.transpose(1,2))).abs_().sqrt_()
     radius1, radius2=nms_radius*pos_dismat1.mean(dim=(1,2),keepdim=True), nms_radius*pos_dismat2.mean(dim=(1,2),keepdim=True)
-    print(pos_dismat1.shape)
-    print(pos_dismat2.shape)
     nms_mask=(pos_dismat1>=radius1) & (pos_dismat2>=radius2)
-    mask_not_local_max=(match_score.unsqueeze(-1)>=match_score.unsqueeze(-2)) | nms_mask
+    mask_not_local_max=(match_score.unsqueeze(-1)>=match_score.unsqueeze(-2))|nms_mask
     mask_not_local_max=~(mask_not_local_max.min(dim=-1).values)
     match_score[mask_not_local_max] = -1
 
@@ -168,15 +164,17 @@ class Separate_out(nn.Module):
             nn.Conv1d(channels, out_channels, kernel_size=1)
         )
     
-    def forward(self, x, separate_num, seed_index1, seed_index2, desc1, desc2, channel):
+    def forward(self, x, separate_num, desc1, desc2, channel):
         evalu_score=self.conv(x)+self.shot_cut(x) 
         evalu_score=torch.sigmoid(evalu_score).squeeze(1) #得出得分
         values, indics = torch.topk(evalu_score,k=separate_num,dim=1)
-        separate_index1 = seed_index1.gather(dim=-1, index=indics)
-        separate_index2 = seed_index2.gather(dim=-1, index=indics)
-        new_desc1 = desc1.gather(dim=-1, index=separate_index1.unsqueeze(1).expand(-1,channel,-1))
-        new_desc2 = desc2.gather(dim=-1, index=separate_index2.unsqueeze(1).expand(-1,channel,-1))
-        return values,new_desc1,new_desc2,separate_index1,separate_index2
+        # separate_index1 = seed_index1.gather(dim=-1, index=indics)
+        # separate_index2 = seed_index2.gather(dim=-1, index=indics)
+        # new_desc1 = desc1.gather(dim=-1, index=separate_index1.unsqueeze(1).expand(-1,channel,-1))
+        # new_desc2 = desc2.gather(dim=-1, index=separate_index2.unsqueeze(1).expand(-1,channel,-1))
+        new_desc1 = desc1.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
+        new_desc2 = desc2.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
+        return values,new_desc1,new_desc2
         
         
         
@@ -206,15 +204,15 @@ class hybrid_block(nn.Module):
         cluster1, cluster2 = desc1.gather(dim=-1, index=seed_index1.unsqueeze(1).expand(-1, self.channel, -1)), \
                              desc2.gather(dim=-1, index=seed_index2.unsqueeze(1).expand(-1, self.channel, -1)) #根据种子序列取得对应特征值
         cluster1, cluster2 = self.attention_block_down(cluster1, desc1), self.attention_block_down(cluster2, desc2) #将所有特征值聚合到种子特征上
-        cn_weight, separate1, separate2, separate1_index, separate2_index = self.separate_down(torch.cat([cluster1,cluster2],dim=1),separate_num1, \
-                                                                                                seed_index1,seed_index2,cluster1,cluster2,self.channel)
+        # cn_weight, separate1, separate2, separate1_index, separate2_index = self.separate_down(torch.cat([cluster1,cluster2],dim=1),separate_num1, \
+        #                                                                                         seed_index1,seed_index2,cluster1,cluster2,self.channel)
+        cn_weight, separate1, separate2 = self.separate_down(torch.cat([cluster1,cluster2],dim=1),separate_num1,cluster1,cluster2,self.channel)
         concate_cluster = self.cluster_filter(torch.cat([separate1, separate2], dim=1)) #  将两张图像析出特征点合起来
 
         cluster1, cluster2 = self.cross_filter(concate_cluster[:, :self.channel], concate_cluster[:, self.channel:]), \
                              self.cross_filter(concate_cluster[:, self.channel:], concate_cluster[:, :self.channel]) #图像间交叉聚合
         cluster1, cluster2 = self.attention_block_self(cluster1,cluster1), self.attention_block_self(cluster2, cluster2) #图像自聚合
-        cn2_weight, separate1, separate2, sep_index1, sep_index2 = self.separate_up(torch.cat([cluster1,cluster2],dim=1),separate_num2, \
-                                                            separate1_index,separate2_index,cluster1,cluster2,self.channel)
+        cn2_weight, separate1, separate2, = self.separate_up(torch.cat([cluster1,cluster2],dim=1),separate_num2,cluster1,cluster2,self.channel)
         desc1_new, desc2_new=self.attention_block_up(desc1,separate1,cn2_weight), self.attention_block_up(desc2, separate2,cn2_weight)
         return desc1_new,desc2_new,cn2_weight
 
@@ -256,10 +254,6 @@ class matcher(nn.Module):
         
     def forward(self,data,test_mode=True):
         x1, x2, desc1, desc2 = data['x1'][:,:,:2], data['x2'][:,:,:2], data['desc1'], data['desc2']
-        print(desc1.shape)
-        print(desc2.shape)
-        print(x1.shape)
-        print(x2.shape)
         desc1, desc2=torch.nn.functional.normalize(desc1,dim=-1), torch.nn.functional.normalize(desc2,dim=-1) #对描述子特征在最后一维进行L2范数归一化
         if test_mode:
             encode_x1,encode_x2=data['x1'],data['x2']

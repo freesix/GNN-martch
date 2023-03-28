@@ -37,6 +37,7 @@ data_arg.add_argument("--desc_suffix", type=str, default='_root_1000.hdf5', help
 loss_arg = add_argument_group("loss")
 loss_arg.add_argument("--momentum", type=float, default=0.9, help="torch损失函数中的冲量")
 loss_arg.add_argument("--seed_loss_weight", type=float, default=250, help="之心损失的权重for sgm，一个超参数")
+loss_arg.add_argument("--mid_loss_weight",type=float,default=1,help="midseeding的损失权重")
 loss_arg.add_argument("--inlier_th", type=float, default=5e-3, help="内在关系的阈值")
 
 
