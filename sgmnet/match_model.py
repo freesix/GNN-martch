@@ -155,7 +155,7 @@ class Separate_out(nn.Module):
         self.shot_cut = nn.Conv1d(channels, out_channels, kernel_size=1)
         self.conv = nn.Sequential(
             nn.InstanceNorm1d(channels, eps=1e-3),
-            nn.SyncBatchNorm(channels),
+            nn.SyncBatchNorm(channels), #分布式计算上的批标准化层
             nn.ReLU(),
             nn.Conv1d(channels, channels, kernel_size=1),
             nn.InstanceNorm1d(channels, eps=1e-3),
@@ -177,10 +177,7 @@ class Separate_out(nn.Module):
         return values,new_desc1,new_desc2
         
         
-        
-        
-        
-        
+                
     
 class hybrid_block(nn.Module):
     def __init__(self, channel, head):
@@ -227,7 +224,7 @@ class matcher(nn.Module):
         self.seedlayer=config.seedlayer # 种子层数
         self.layer_num=config.layer_num #网络层数
         self.sink_iter=config.sink_iter #sinkhorn算法迭代次数
-        self.domain_topk=config.domain_topk
+        self.domain_topk=config.domain_topk #邻域聚合数量
         self.domain_radiues=config.domain_radiues
         self.separate_num1=config.separate_num1
         self.separate_num2=config.separate_num2

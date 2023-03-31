@@ -5,7 +5,7 @@ import os
 from tensorboardX import SummaryWriter
 import numpy as np
 import cv2
-from loss import SGMLoss,SGLoss
+from loss import SGMLoss
 from valid import valid,dump_train_vis
 
 import sys
@@ -14,17 +14,17 @@ sys.path.insert(0, ROOT_DIR)
 
 
 from utils import train_utils
-
+# train_step(optimizer, model, match_loss, train_data,step-start_step,pre_avg_loss)
 def train_step(optimizer, model, match_loss, data,step,pre_avg_loss):
     data['step']=step
-    result=model(data,test_mode=False)
-    loss_res=match_loss.run(data,result)
+    result=model(data,test_mode=False) # 模型训练
+    loss_res=match_loss.run(data,result) # 计算损失
     
     optimizer.zero_grad() #清空梯度
-    loss_res['total_loss'].backward()
+    loss_res['total_loss'].backward() #损失加入反向传播
     #apply reduce on all record tensor
     for key in loss_res.keys():
-        loss_res[key]=train_utils.reduce_tensor(loss_res[key],'mean')
+        loss_res[key]=train_utils.reduce_tensor(loss_res[key],'mean') #将分布式训练的损失函数梯度合并更新梯度然后广播回各个分布式设备
   
     if loss_res['total_loss']<7*pre_avg_loss or step<200 or pre_avg_loss==0:
         optimizer.step()
@@ -41,8 +41,6 @@ def train(model, train_loader, valid_loader, config,model_config):
     
     if config.model_name=='SGM':#根据模型选择loss计算方式
         match_loss = SGMLoss(config,model_config) 
-    elif config.model_name=='SG':
-        match_loss= SGLoss(config,model_config)
     else:
         raise NotImplementedError
     
@@ -50,20 +48,20 @@ def train(model, train_loader, valid_loader, config,model_config):
     config.resume = os.path.isfile(checkpoint_path)#是否存在断点
     if config.resume:
         if config.local_rank==0:
-            print('==> Resuming from checkpoint..')
-        checkpoint = torch.load(checkpoint_path,map_location='cuda:{}'.format(config.local_rank))
+            print('==> 从断点恢复')
+        checkpoint = torch.load(checkpoint_path,map_location='cuda:{}'.format(config.local_rank))# 加载模型文件到GPU上
 
-        model.load_state_dict(checkpoint['state_dict'])
+        model.load_state_dict(checkpoint['state_dict']) #加载模型的断点前训练权重
         best_acc = checkpoint['best_acc']
         start_step = checkpoint['step']
-        optimizer.load_state_dict(checkpoint['optimizer'])
-    else:
+        optimizer.load_state_dict(checkpoint['optimizer']) #加载优化器的断点前权重
+    else: # 没有断点文件，就初始化训练步骤等参数从头开始训练
         best_acc = -1
         start_step = 0
-    train_loader_iter = iter(train_loader)
+    train_loader_iter = iter(train_loader) # 创建一个迭代对象
     
     if config.local_rank==0:
-        writer=SummaryWriter(os.path.join(config.log_base,'log_file'))#运行的log数据均存于此
+        writer=SummaryWriter(os.path.join(config.log_base,'log_file'))#运行的log数据均存于此(初始化summarywriter)
 
     train_loader.sampler.set_epoch(start_step*config.train_batch_size//len(train_loader.dataset))#设置ddp采样
     pre_avg_loss=0

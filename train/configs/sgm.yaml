@@ -12,5 +12,5 @@ detach_iter: 140000
 p_th: 0.2
 domain_topk: 10
 domain_radiues: 0.01
-separate_num1: 128
-separate_num2: 128
+separate_num1: 100
+separate_num2: 80

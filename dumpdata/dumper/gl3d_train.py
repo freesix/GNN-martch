@@ -160,28 +160,28 @@ class gl3d_train(BaseDumper):
         with open(os.path.join(self.config['dataset_dump_dir'], seq, 'pair_num.txt'), 'w') as f:
             f.write(str(info['pair_num']))
 
-#用来计算领域范围和需要聚合的特征点
-    def domain_computer(self,kpt1,kpt2,desc1,desc2):
-        kpt1,kpt2 = kpt1[:,:2], kpt2[:,:2]
-        dis_mat1=np.sum((np.expand_dims(kpt1,axis=1) - np.expand_dims(kpt1,axis=0))**2, axis=-1)**0.5
-        dis_mat2=np.sum((np.expand_dims(kpt2,axis=1) - np.expand_dims(kpt2,axis=0))**2, axis=-1)**0.5
-        desc1_nerbh=[]
-        desc2_nerbh=[]
-        for i in range(len(dis_mat1)):
-            dis_index=np.argsort(dis_mat1[i,:])[self.num_nerbh:] #取出距离最近的num_nerbh的索引
-            dis_value=np.take(dis_mat1[i,:], dis_index, axis=0) #取出距离最近的num_nerbh个值
-            for j, dis in enumerate(dis_value): 
-                if dis > self.radius_nerbh: #如果特征点距离超出了半径，则舍弃用最近两点距离代替
-                    dis_index[j] = dis_index[1] 
-            desc1_nerbh.append(desc1[dis_index,:])
+# #用来计算领域范围和需要聚合的特征点
+#     def domain_computer(self,kpt1,kpt2,desc1,desc2):
+#         kpt1,kpt2 = kpt1[:,:2], kpt2[:,:2]
+#         dis_mat1=np.sum((np.expand_dims(kpt1,axis=1) - np.expand_dims(kpt1,axis=0))**2, axis=-1)**0.5
+#         dis_mat2=np.sum((np.expand_dims(kpt2,axis=1) - np.expand_dims(kpt2,axis=0))**2, axis=-1)**0.5
+#         desc1_nerbh=[]
+#         desc2_nerbh=[]
+#         for i in range(len(dis_mat1)):
+#             dis_index=np.argsort(dis_mat1[i,:])[self.num_nerbh:] #取出距离最近的num_nerbh的索引
+#             dis_value=np.take(dis_mat1[i,:], dis_index, axis=0) #取出距离最近的num_nerbh个值
+#             for j, dis in enumerate(dis_value): 
+#                 if dis > self.radius_nerbh: #如果特征点距离超出了半径，则舍弃用最近两点距离代替
+#                     dis_index[j] = dis_index[1] 
+#             desc1_nerbh.append(desc1[dis_index,:])
             
-        for i in range(len(dis_mat2)):
-            dis_index=np.argsort(dis_mat2[i,:])[self.num_nerbh:] #取出距离最近的num_nerbh的索引
-            dis_value=np.take(dis_mat2[i,:], dis_index, axis=0) #取出距离最近的num_nerbh个值
-            for j, dis in enumerate(dis_value): 
-                if dis > self.radius_nerbh: #如果特征点距离超出了半径，则舍弃用最近两点距离代替
-                    dis_index[j] = dis_index[1] 
-            desc2_nerbh.append(desc2[dis_index,:])
+#         for i in range(len(dis_mat2)):
+#             dis_index=np.argsort(dis_mat2[i,:])[self.num_nerbh:] #取出距离最近的num_nerbh的索引
+#             dis_value=np.take(dis_mat2[i,:], dis_index, axis=0) #取出距离最近的num_nerbh个值
+#             for j, dis in enumerate(dis_value): 
+#                 if dis > self.radius_nerbh: #如果特征点距离超出了半径，则舍弃用最近两点距离代替
+#                     dis_index[j] = dis_index[1] 
+#             desc2_nerbh.append(desc2[dis_index,:])
 
     # 整理数据
     def format_seq(self,index):
@@ -194,8 +194,8 @@ class gl3d_train(BaseDumper):
             
 
         #检查是否已经存在，如果路径下已经存有文件则退出下面的存储步骤
-        if os.path.exists(os.path.join(self.config['dataset_dump_dir'],seq,'pair_num.txt')):
-            return
+        # if os.path.exists(os.path.join(self.config['dataset_dump_dir'],seq,'pair_num.txt')):
+        #     return
 
         angle_list=[] #角度列表，几何信息文件里面包含
         #filtering pairs
@@ -203,8 +203,9 @@ class gl3d_train(BaseDumper):
             pair_index1,pair_index2=cur_pair[0],cur_pair[1] #拆分配对图像为源图像和目标图像
             geo1,geo2=geom_dict[pair_index1],geom_dict[pair_index2]
             dR = np.dot(geo2['R'], geo1['R'].T)
-            q = transformations.quaternion_from_matrix(dR)
-            angle_list.append(math.acos(q[0]) * 2 * 180 / math.pi)
+            q = transformations.quaternion_from_matrix(dR) #将旋转矩阵转换为四元数表示方法
+            angle_list.append(math.acos(q[0]) * 2 * 180 / math.pi) #从四元数计算旋转角
+        #排除掉重叠率和旋转角度不在预设范围内的配对点    
         angle_list=np.asarray(angle_list)
         mask_survive=np.logical_and(
                             np.logical_and(angle_list>self.config['angle_th'][0],angle_list<self.config['angle_th'][1]),
@@ -215,12 +216,12 @@ class gl3d_train(BaseDumper):
             print(seq,len(pair_list))
         #sample pairs
         shuffled_pair_list=np.random.permutation(pair_list)
-        sample_target=min(self.config['pairs_per_seq'],len(shuffled_pair_list))
+        sample_target=min(self.config['pairs_per_seq'],len(shuffled_pair_list))#设置每个文件夹最大图片配对量
         sample_number=0
 
         info={'dR':[],'dt':[],'K1':[],'K2':[],'img_path1':[],'img_path2':[],'fea_path1':[],'fea_path2':[],'size1':[],'size2':[],
             'corr':[],'incorr1':[],'incorr2':[],'pair_num':[]}
-        for cur_pair in shuffled_pair_list:
+        for cur_pair in shuffled_pair_list: #已经初步筛选的打乱了顺序的配对图片
             pair_index1,pair_index2=cur_pair[0],cur_pair[1]
             geo1,geo2=geom_dict[pair_index1],geom_dict[pair_index2]
             dR = np.dot(geo2['R'], geo1['R'].T)
@@ -229,7 +230,7 @@ class gl3d_train(BaseDumper):
             K1,K2=geo1['K'],geo2['K']
             size1,size2=geo1['size'],geo2['size']
 
-            basename1,basename2=basename_list[pair_index1],basename_list[pair_index2]
+            basename1,basename2=basename_list[pair_index1],basename_list[pair_index2] #读取相应配对图片的完整名称
             img_path1,img_path2=os.path.join(seq,'undist_images',basename1+'.jpg'),os.path.join(seq,'undist_images',basename2+'.jpg')
             fea_path1,fea_path2=os.path.join(seq,basename1+'.jpg'+'_'+self.config['extractor']['name']+'_'+str(self.config['extractor']['num_kpt'])+'.hdf5'),\
                                 os.path.join(seq,basename2+'.jpg'+'_'+self.config['extractor']['name']+'_'+str(self.config['extractor']['num_kpt'])+'.hdf5')
@@ -238,7 +239,6 @@ class gl3d_train(BaseDumper):
                 h5py.File(os.path.join(self.config['feature_dump_dir'],fea_path2),'r') as fea2:
                 desc1,desc2=fea1['descriptors'][()],fea2['descriptors'][()]
                 kpt1,kpt2=fea1['keypoints'][()],fea2['keypoints'][()]
-#在这里调用计算领域大小方法
                 depth_path1,depth_path2=os.path.join(self.config['rawdata_dir'],'data',seq,'depths',basename1+'.pfm'),\
                                         os.path.join(self.config['rawdata_dir'],'data',seq,'depths',basename2+'.pfm')
                 depth1,depth2=self.load_depth(depth_path1),self.load_depth(depth_path2)

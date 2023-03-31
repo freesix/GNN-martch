@@ -78,6 +78,7 @@ class SGMLoss:
         self.model_config=model_config
 
     def run(self,data,result):
+        # p:分配矩阵，
         loss_corr,loss_incorr,acc_corr,acc_incorr=CorrLoss(result['p'],data['num_corr'],data['num_incorr1'],data['num_incorr2'])
         loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower=[],[],[]
         
@@ -114,13 +115,5 @@ class SGMLoss:
                 'pre_seed_conf':classif_precision_tower,'recall_seed_conf':classif_recall_tower,'loss_corr_mid':loss_mid_corr_tower,
                 'loss_incorr_mid':loss_mid_incorr_tower,'mid_acc_corr':acc_mid_tower,'total_loss':total_loss}
         
-class SGLoss:
-    def __init__(self,config,model_config):
-        self.config=config
-        self.model_config=model_config
-        
-    def run(self,data,result):
-        loss_corr,loss_incorr,acc_corr,acc_incorr=CorrLoss(result['p'],data['num_corr'],data['num_incorr1'],data['num_incorr2'])
-        total_loss=loss_corr+loss_incorr
-        return {'loss_corr':loss_corr,'loss_incorr':loss_incorr,'acc_corr':acc_corr,'acc_incorr':acc_incorr,'total_loss':total_loss}
+
      
