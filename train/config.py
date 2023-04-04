@@ -54,7 +54,7 @@ train_arg.add_argument("--log_intv", type=int, default=100, help="记录损失�
 train_arg.add_argument("--decay_rate", type=float, default=0.999996, help="学习率衰减率")
 train_arg.add_argument("--decay_iter", type=float, default=300000, help="学习率衰减轮次")
 train_arg.add_argument("--local_rank", type=int, default=0, help="分布式计算的局部序列")
-train_arg.add_argument("--train_vis_floder", type=str, default='.', help="训练期间可视化目录")
+train_arg.add_argument("--train_vis_folder", type=str, default='.', help="训练期间可视化目录")
 
 
 

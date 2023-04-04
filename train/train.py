@@ -5,7 +5,7 @@ import os
 from tensorboardX import SummaryWriter
 import numpy as np
 import cv2
-from loss import SGMLoss
+from loss import GSNLoss
 from valid import valid,dump_train_vis
 
 import sys
@@ -40,7 +40,7 @@ def train(model, train_loader, valid_loader, config,model_config):
     optimizer = optim.Adam(model.parameters(), lr=config.train_lr)#初始化优化器
     
     if config.model_name=='SGM':#根据模型选择loss计算方式
-        match_loss = SGMLoss(config,model_config) 
+        match_loss = GSNLoss(config,model_config) 
     else:
         raise NotImplementedError
     
@@ -98,7 +98,8 @@ def train(model, train_loader, valid_loader, config,model_config):
             writer.add_scalar('dustbin', model.module.dustbin, step)
 
             if config.model_name=='SGM':
-                writer.add_scalar('SeedConfLoss', loss_res['loss_seed_conf'], step)
+                writer.add_scalar('Separ1ConfLoss', loss_res['loss_separ1_conf'], step)
+                writer.add_scalar('Separ2ConfLoss', loss_res['loss_separ2_conf'], step)
                 writer.add_scalar('MidCorrLoss', loss_res['loss_corr_mid'].sum(), step)
                 writer.add_scalar('MidInCorrLoss', loss_res['loss_incorr_mid'].sum(), step)
             
@@ -107,19 +108,25 @@ def train(model, train_loader, valid_loader, config,model_config):
         b_save = ((step + 1) % config.save_intv) == 0
         b_validate = ((step + 1) % config.val_intv) == 0
         if b_validate:
-            total_loss,acc_corr,acc_incorr,seed_precision_tower,seed_recall_tower,acc_mid=valid(valid_loader, model, match_loss, config,model_config)
+            total_loss,acc_corr,acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision_tower,total_recall_tower,acc_mid=\
+                valid(valid_loader, model, match_loss, config,model_config)
             if config.local_rank==0:
                 writer.add_scalar('ValidAcc', acc_corr, step)
                 writer.add_scalar('ValidLoss', total_loss, step)
                 
                 if config.model_name=='SGM':
-                    for i in range(len(seed_recall_tower)):
-                        writer.add_scalar('seed_conf_pre_%d'%i,seed_precision_tower[i],step)
-                        writer.add_scalar('seed_conf_recall_%d' % i, seed_precision_tower[i], step)
+                    for i in range(len(separ1_recall)):
+                        writer.add_scalar('separ1_conf_pre_%d'%i,separ1_precision[i],step)
+                        writer.add_scalar('separ1_conf_recall_%d' % i, separ1_recall[i], step)
+                        writer.add_scalar('separ2_conf_pre_%d'%i,separ2_precision[i],step)
+                        writer.add_scalar('separ2_conf_recall_%d'%i, separ2_recall[i], step)
+                        writer.add_scalar('total_conf_pre_%d'%i,total_precision_tower[i],step)
+                        writer.add_scalar('total_conf_racall_%d'%i,total_recall_tower[i],step)
                     for i in range(len(acc_mid)):
                         writer.add_scalar('acc_mid%d'%i,acc_mid[i],step)
-                    print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data,'seed_conf_pre: ',seed_precision_tower.mean().data,
-                     'seed_conf_recall: ',seed_recall_tower.mean().data,'acc_mid: ',acc_mid.mean().data)
+                    print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data,'separ1_conf_pre: ',separ1_precision.mean().data,'separ1_conf_recall: ',\
+                          separ1_recall.mean().data,'separ2_conf_per: ',separ2_precision.mean().data,'separ2_conf_recall: ',separ2_recall.mean().data,\
+                          'total_conf_pre: ',total_precision_tower.mean().data,'total_conf_recall: ',total_recall_tower.mean().data,'acc_mid: ',acc_mid.mean().data)
                 else:
                      print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data)
                 
@@ -151,7 +158,7 @@ def train(model, train_loader, valid_loader, config,model_config):
                     if not os.path.exists(os.path.join(config.train_vis_folder,'train_vis',config.log_base)):
                         os.mkdir(os.path.join(config.train_vis_folder,'train_vis',config.log_base))
                     os.mkdir(os.path.join(config.train_vis_folder,'train_vis',config.log_base,str(step)))
-                res=model(train_data)
+                res=model(train_data) 
                 dump_train_vis(res,train_data,step,config)
             model.train()
     

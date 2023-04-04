@@ -164,17 +164,17 @@ class Separate_out(nn.Module):
             nn.Conv1d(channels, out_channels, kernel_size=1)
         )
     
-    def forward(self, x, separate_num, desc1, desc2, channel):
+    def forward(self, x, separate_num, desc1, desc2, seed_index1, seed_index2, channel):
         evalu_score=self.conv(x)+self.shot_cut(x) 
         evalu_score=torch.sigmoid(evalu_score).squeeze(1) #得出得分
         values, indics = torch.topk(evalu_score,k=separate_num,dim=1)
-        # separate_index1 = seed_index1.gather(dim=-1, index=indics)
-        # separate_index2 = seed_index2.gather(dim=-1, index=indics)
+        separate_index1 = seed_index1.gather(dim=-1, index=indics)
+        separate_index2 = seed_index2.gather(dim=-1, index=indics)
         # new_desc1 = desc1.gather(dim=-1, index=separate_index1.unsqueeze(1).expand(-1,channel,-1))
         # new_desc2 = desc2.gather(dim=-1, index=separate_index2.unsqueeze(1).expand(-1,channel,-1))
         new_desc1 = desc1.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
         new_desc2 = desc2.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
-        return values,new_desc1,new_desc2
+        return values,new_desc1,new_desc2,separate_index1,separate_index2
         
         
                 
@@ -203,15 +203,17 @@ class hybrid_block(nn.Module):
         cluster1, cluster2 = self.attention_block_down(cluster1, desc1), self.attention_block_down(cluster2, desc2) #将所有特征值聚合到种子特征上
         # cn_weight, separate1, separate2, separate1_index, separate2_index = self.separate_down(torch.cat([cluster1,cluster2],dim=1),separate_num1, \
         #                                                                                         seed_index1,seed_index2,cluster1,cluster2,self.channel)
-        cn_weight, separate1, separate2 = self.separate_down(torch.cat([cluster1,cluster2],dim=1),separate_num1,cluster1,cluster2,self.channel)
+        cn1_weight, separate1, separate2, separate11_index, separate12_index = self.separate_down(torch.cat([cluster1,cluster2],dim=1),\
+                                                            separate_num1,cluster1,cluster2,seed_index1,seed_index2,self.channel)
         concate_cluster = self.cluster_filter(torch.cat([separate1, separate2], dim=1)) #  将两张图像析出特征点合起来
 
         cluster1, cluster2 = self.cross_filter(concate_cluster[:, :self.channel], concate_cluster[:, self.channel:]), \
                              self.cross_filter(concate_cluster[:, self.channel:], concate_cluster[:, :self.channel]) #图像间交叉聚合
         cluster1, cluster2 = self.attention_block_self(cluster1,cluster1), self.attention_block_self(cluster2, cluster2) #图像自聚合
-        cn2_weight, separate1, separate2, = self.separate_up(torch.cat([cluster1,cluster2],dim=1),separate_num2,cluster1,cluster2,self.channel)
+        cn2_weight, separate1, separate2, separate21_index, separate22_index= self.separate_up(torch.cat([cluster1,cluster2],dim=1),\
+                                                    separate_num2,cluster1,cluster2, separate11_index, separate12_index, self.channel)
         desc1_new, desc2_new=self.attention_block_up(desc1,separate1,cn2_weight), self.attention_block_up(desc2, separate2,cn2_weight)
-        return desc1_new,desc2_new,cn2_weight
+        return desc1_new,desc2_new,cn1_weight,cn2_weight,separate11_index,separate12_index,separate21_index,separate22_index
 
 class matcher(nn.Module):
     def __init__(self,config):
@@ -281,7 +283,7 @@ class matcher(nn.Module):
         x1_pos_embedding,x2_pos_embedding=torch.nn.functional.normalize(x1_pos_embedding,dim=-1),torch.nn.functional.normalize(x2_pos_embedding,dim=-1)
         aug_desc1,aug_desc2=desc1_embedding+x1_pos_embedding+desc1, desc2_embedding+x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
 
-        seed_weight_tower,mid_p_tower,seed_index_tower,nn_index_tower=[],[],[],[]
+        seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower,separate1_index_tower,separate2_index_tower=[],[],[],[],[],[],[]
         seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)) #保存每轮次的种子索引
         nn_index_tower.append(nn_index) # 保存图B中分别与图A中特征点最近的两个索引
         
@@ -289,7 +291,7 @@ class matcher(nn.Module):
         seed_para_index=0
         for i in range(self.layer_num): # 网络层数
             
-            if i in self.seedlayer and i!=0:
+            if i in self.seedlayer and i!=0: # 在第6次的时候重播种
                 seed_para_index+=1
                 aug_desc1,aug_desc2=self.mid_final_project(aug_desc1),self.mid_final_project(aug_desc2) 
                 M=torch.matmul(aug_desc1.transpose(1,2),aug_desc2)
@@ -302,21 +304,25 @@ class matcher(nn.Module):
                 p_match_score,nn_index1 = values[:,:,0],nn_index[:,:,0]
 
                 # 重新seed
-                seed_index1,seed_index2,dis_mat1,dia_mat2 = seeding(nn_index1,nn_index2,x1,x2,self.seed_top_k[seed_para_index],p_match_score,
+                seed_index1,seed_index2,_,_ = seeding(nn_index1,nn_index2,x1,x2,self.seed_top_k[seed_para_index],p_match_score,
                                                   self.conf_bar[seed_para_index],self.seed_radius_coe,test=test_mode)
                 seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)), nn_index_tower.append(nn_index1)
                 
                 if not test_mode and data['step']<self.detach_iter:
                     aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
 
-            aug_desc1,aug_desc2,seed_weight = self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2,self.separate_num1,self.separate_num2)
-            seed_weight_tower.append(seed_weight)
+            aug_desc1,aug_desc2,seed_weight1,seed_weight2,separate11_index,separate12_index,separate21_index,separate22_index = \
+                                        self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2,self.separate_num1,self.separate_num2)
+            seed_weight1_tower.append(seed_weight1),seed_weight2_tower.append(seed_weight2)
+            separate1_index_tower.append(torch.stack([separate11_index,separate12_index],dim=-1))
+            separate2_index_tower.append(torch.stack([separate21_index,separate22_index],dim=-1))
         
         aug_desc1,aug_desc2 = self.final_project(aug_desc1), self.final_project(aug_desc2)
-        cmat = torch.matmul(aug_desc1.transpose(1,2), aug_desc2)
+        cmat = torch.matmul(aug_desc1.transpose(1,2), aug_desc2) #欧式距离
         p = sink_algorithm(cmat, self.dustbin,self.sink_iter[-1])
     
-        return {'p':p,'seed_conf':seed_weight_tower,'seed_index':seed_index_tower,'mid_p':mid_p_tower,'nn_index':nn_index_tower}
+        return {'p':p,'separate1_conf':seed_weight1_tower,'separate2_conf':seed_weight2_tower,'separate1_index':separate1_index_tower,\
+                'separate2_index':separate2_index_tower,'seed_index':seed_index_tower,'mid_p':mid_p_tower,'nn_index':nn_index_tower}
 
             
 

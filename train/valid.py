@@ -38,20 +38,28 @@ def valid(valid_loader, model,match_loss, config,model_config):
 
             if config.model_name=='SGM':
                 total_acc_mid+=loss_res['mid_acc_corr']
-                total_precision,total_recall=total_precision+loss_res['pre_seed_conf'],total_recall+loss_res['recall_seed_conf']
+                # total_precision,total_recall=total_precision+loss_res['pre_seed_conf'],total_recall+loss_res['recall_seed_conf']
+                separ1_precision,separ1_recall=separ1_precision+loss_res['pre_separ1_conf'], separ1_recall+loss_res['recall_separ1_conf']
+                separ2_precision,separ2_recall=separ2_precision+loss_res['pre_separ2_conf'], separ2_recall+loss_res['recall_separ2_conf']
                 
         total_acc_corr/=num_pair
         total_acc_incorr /= num_pair
-        total_precision/=num_pair
-        total_recall/=num_pair
+        separ1_precision/=num_pair
+        separ1_recall/=num_pair
+        separ2_precision/=num_pair
+        separ2_recall/=num_pair
         total_acc_mid/=num_pair
+        total_precision=separ1_precision+separ2_precision
+        total_recall=separ1_recall+separ2_recall
 
         #apply tensor reduction
-        total_loss,total_acc_corr,total_acc_incorr,total_precision,total_recall,total_acc_mid=train_utils.reduce_tensor(total_loss,'sum'),\
-                        train_utils.reduce_tensor(total_acc_corr,'mean'),train_utils.reduce_tensor(total_acc_incorr,'mean'),\
-                        train_utils.reduce_tensor(total_precision,'mean'),train_utils.reduce_tensor(total_recall,'mean'),train_utils.reduce_tensor(total_acc_mid,'mean')
+        total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision,total_recall,total_acc_mid\
+            =train_utils.reduce_tensor(total_loss,'sum'), train_utils.reduce_tensor(total_acc_corr,'mean'),train_utils.reduce_tensor(total_acc_incorr,'mean'),\
+            train_utils.reduce_tensor(separ1_precision,'mean'),train_utils.reduce_tensor(separ1_recall,'mean'),train_utils.reduce_tensor(separ2_precision,'mean'),\
+            train_utils.reduce_tensor(separ2_recall,'mean'),train_utils.reduce_tensor(total_precision,'mean'),train_utils.reduce_tensor(total_recall,'mean'),\
+            train_utils.reduce_tensor(total_acc_mid,'mean')
     model.train()#启用batchNormalization和Dropout
-    return total_loss,total_acc_corr,total_acc_incorr,total_precision,total_recall,total_acc_mid
+    return total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision,total_recall,total_acc_mid
 
 
 

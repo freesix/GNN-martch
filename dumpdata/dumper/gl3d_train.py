@@ -146,11 +146,10 @@ class gl3d_train(BaseDumper):
         os.mkdir(os.path.join(self.config['dataset_dump_dir'], seq)) # 创建数据处理后保存文件夹
         with h5py.File(os.path.join(self.config['dataset_dump_dir'], seq, 'info.h5py'), 'w') as f:
             for type in pair_type:
-                dg = f.create_group(type)
-                for idx in range(num_pairs):
+                dg = f.create_group(type) #创建以type中类型为对象的新对象
+                for idx in range(num_pairs): 
                     data_item = np.asarray(info[type][idx])
-                    dg.create_dataset(str(idx), data_item.shape,
-                                      data_item.dtype, data=data_item)
+                    dg.create_dataset(str(idx), data_item.shape,data_item.dtype, data=data_item) #在对应组下存储一定格式数据
             for type in ['img_path1', 'img_path2']:
                 dg = f.create_group(type)
                 for idx in range(num_pairs):

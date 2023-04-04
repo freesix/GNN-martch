@@ -40,7 +40,7 @@ class Offline_Dataset(data.Dataset):
             for key in dtype:
                 data[key].append(sample[key])
 
-        for key in ['x1', 'x2', 'kpt1', 'kpt2', 'desc1', 'desc2', 'e_gt', 'pscore1', 'pscore2']:
+        for key in ['x1', 'x2', 'kpt1', 'kpt2', 'desc1', 'desc2', 'e_gt', 'pscore1', 'pscore2']: #将不同的数据转换为不同的类型
             data[key] = torch.from_numpy(np.stack(data[key])).float() #np.stack()沿着新轴连接数组
         for key in ['num_corr', 'num_incorr1', 'num_incorr2']:
             data[key] = torch.from_numpy(np.stack(data[key])).int()
@@ -51,7 +51,7 @@ class Offline_Dataset(data.Dataset):
             homo_mat = torch.from_numpy(train_utils.get_rnd_homography(batch_size)).unsqueeze(1) #获取的转换矩阵在第一维扩展成3x1x1
             aug_seed = random.random()
             if aug_seed < 0.5:
-                x1_homo =torch.cat([data['x1'], torch.ones([batch_size, num_pts, 1])], dim=-1).unsqueeze(-1)#在x1的最后一个维度拼接上后面一个矩阵，然后再给新的矩阵增加一个维度，增加在最后
+                x1_homo =torch.cat([data['x1'], torch.ones([batch_size, num_pts, 1])], dim=-1).unsqueeze(-1)#将坐标转换为齐次坐标
                 x1_homo =torch.matmul(homo_mat.float(), x1_homo.float()).squeeze(-1)
                 data['aug_x1'] = x1_homo[:, :, :2] / x1_homo[:, :, 2].unsqueeze(-1)
                 data['aug_x2'] = data['x2']
