@@ -42,9 +42,9 @@ def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc
     match_score[mask_not_local_max] = -1
 
     match_score[match_score<confbar] = -1 #置信度小于设定值的赋-1
-    mask_survive=match_score>0
-    if test:
-        topk=min(mask_survive.sum(dim=1)[0]+2,topk)
+    # mask_survive=match_score>0
+    # if test:
+    #     topk=min(mask_survive.sum(dim=1)[0]+2,topk)
     _,topindex=torch.topk(match_score,topk,dim=-1) #b*k
     seed_index1,seed_index2=topindex,nn_index1.gather(index=topindex,dim=-1)
     return seed_index1,seed_index2,pos_dismat1,pos_dismat2
@@ -233,7 +233,7 @@ class matcher(nn.Module):
             self.mid_ditbin=nn.ParameterDict({str(i):nn.Parameter(torch.tensor(2,dtype=torch.float32)) for i in config.seedlayer[1:]})
             self.mid_final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
         
-    def forward(self,data,test_mode=False):
+    def forward(self,data,test_mode=True):
         x1, x2, desc1, desc2 = data['x1'][:,:,:2], data['x2'][:,:,:2], data['desc1'], data['desc2']
         desc1, desc2=torch.nn.functional.normalize(desc1,dim=-1), torch.nn.functional.normalize(desc2,dim=-1) #对描述子特征在最后一维进行L2范数归一化
         # if test_mode:
@@ -290,8 +290,8 @@ class matcher(nn.Module):
                                                   self.conf_bar[seed_para_index],self.seed_radius_coe,test=test_mode)
                 seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)), nn_index_tower.append(nn_index1)
                 
-                # if not test_mode and data['step']<self.detach_iter:
-                #     aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
+                if not test_mode and data['step']<self.detach_iter:
+                    aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
 
             aug_desc1,aug_desc2,seed_weight1,seed_weight2,separate11_index,separate12_index,separate21_index,separate22_index = \
                                         self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2,self.separate_num1,self.separate_num2)
