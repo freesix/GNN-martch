@@ -34,17 +34,17 @@ def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc
     # 非极大值抑制算法
     pos_dismat1=((x1.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x1.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x1@x1.transpose(1,2))).abs_().sqrt_() #abs_()和abs()的区别在于abs_()会在本地创建一个张量，改变张量本身的值
     x2=x2.gather(index=nn_index1.unsqueeze(-1).expand(-1,-1,2),dim=1) #获取x2在nn_index1索引中的值
-    pos_dismat2=((x2.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x2.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x2@x2.transpose(1,2))).abs_().sqrt_()
+    pos_dismat2=((x2.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x2.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x2@x2.transpose(1,2))).abs_().sqrt_() #求取
     radius1, radius2=nms_radius*pos_dismat1.mean(dim=(1,2),keepdim=True), nms_radius*pos_dismat2.mean(dim=(1,2),keepdim=True)
     nms_mask=(pos_dismat1>=radius1) & (pos_dismat2>=radius2)
     mask_not_local_max=(match_score.unsqueeze(-1)>=match_score.unsqueeze(-2))|nms_mask
     mask_not_local_max=~(mask_not_local_max.min(dim=-1).values)
-    match_score[mask_not_local_max] = -1
+    match_score[mask_not_local_max] = -1 #对于非局部最大值舍弃
 
     match_score[match_score<confbar] = -1 #置信度小于设定值的赋-1
     mask_survive=match_score>0
-    if test:
-        topk=min(mask_survive.sum(dim=1)[0]+2,topk)
+    # if test:
+    #     topk=min(mask_survive.sum(dim=1)[0]+2,topk) #筛选符合非极大值抑制的点
     _,topindex=torch.topk(match_score,topk,dim=-1) #b*k
     seed_index1,seed_index2=topindex,nn_index1.gather(index=topindex,dim=-1)
     return seed_index1,seed_index2,pos_dismat1,pos_dismat2
@@ -233,13 +233,13 @@ class matcher(nn.Module):
             self.mid_ditbin=nn.ParameterDict({str(i):nn.Parameter(torch.tensor(2,dtype=torch.float32)) for i in config.seedlayer[1:]})
             self.mid_final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
         
-    def forward(self,data,test_mode=False):
+    def forward(self,data,test_mode=True):
         x1, x2, desc1, desc2 = data['x1'][:,:,:2], data['x2'][:,:,:2], data['desc1'], data['desc2']
         desc1, desc2=torch.nn.functional.normalize(desc1,dim=-1), torch.nn.functional.normalize(desc2,dim=-1) #对描述子特征在最后一维进行L2范数归一化
-        # if test_mode:
-        encode_x1,encode_x2=data['x1'],data['x2']
-        # else:
-            # encode_x1,encode_x2=data['aug_x1'],data['aug_x2']
+        if test_mode:
+            encode_x1,encode_x2=data['x1'],data['x2']
+        else:
+            encode_x1,encode_x2=data['aug_x1'],data['aug_x2']
 
         desc_dismat=(2-2*torch.matmul(desc1,desc2.transpose(1,2))).sqrt() #计算两幅图特征点特征之间的距离
         values, nn_index=torch.topk(desc_dismat,k=2,largest=False,dim=-1,sorted=True) #取出图B中分别与图A中最近的2个点索引和距离值
@@ -267,6 +267,7 @@ class matcher(nn.Module):
 
         seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower,separate1_index_tower,separate2_index_tower=[],[],[],[],[],[],[]
         seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)) #保存每轮次的种子索引
+        
         nn_index_tower.append(nn_index) # 保存图B中分别与图A中特征点最近的两个索引
         
 
@@ -290,8 +291,8 @@ class matcher(nn.Module):
                                                   self.conf_bar[seed_para_index],self.seed_radius_coe,test=test_mode)
                 seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)), nn_index_tower.append(nn_index1)
                 
-                # if not test_mode and data['step']<self.detach_iter:
-                #     aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
+                if not test_mode and data['step']<self.detach_iter:
+                    aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
 
             aug_desc1,aug_desc2,seed_weight1,seed_weight2,separate11_index,separate12_index,separate21_index,separate22_index = \
                                         self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2,self.separate_num1,self.separate_num2)

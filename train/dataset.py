@@ -89,7 +89,7 @@ class Offline_Dataset(data.Dataset):
                 desc2, kpt2, pscore2 = fea2['descriptors'][()], fea2['keypoints'][()][:,:2], fea2['keypoints'][()][:,2]
                 kpt1, kpt2, desc1, desc2=kpt1[:self.config.num_kpt], kpt2[:self.config.num_kpt], desc1[:self.config.num_kpt], desc2[:self.config.num_kpt] 
 
-                #正则化特征点
+                #标准化特征点
             if self.config.input_normalize=='intrinsic':  
                 x1, x2 = np.concatenate([kpt1, np.ones([kpt1.shape(0), 1])], axis=-1),\
                          np.concatenate([kpt2, np.ones([kpt2.shape[0], 1])], axis=-1) #np.concatenate用于按指定维度拼接数组,这里是给特征点坐标增加一维，转换为齐次坐标系

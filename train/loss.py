@@ -24,7 +24,7 @@ def CELoss(seed_x1,seed_x2,e,confidence,inlier_th,batch_mask=1):
     loss_pos,loss_neg=-torch.log(abs(confidence) + 1e-8)*mask_pos,-torch.log(abs(1-confidence)+1e-8)*mask_neg
     classif_loss = torch.mean(loss_pos * 0.5 / num_pos.unsqueeze(-1) + loss_neg * 0.5 / num_neg.unsqueeze(-1),dim=-1)
     classif_loss =classif_loss*batch_mask
-    classif_loss=classif_loss.mean()
+    classif_loss=classif_loss.mean() #整个批次的平均分类损失
     precision = torch.mean(
         torch.sum((confidence > 0.5).type(confidence.type()) * mask_pos, dim=1) /
         (torch.sum((confidence > 0.5).type(confidence.type()), dim=1)+1e-8)
