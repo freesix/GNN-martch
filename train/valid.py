@@ -17,8 +17,8 @@ def valid(valid_loader, model,match_loss, config,model_config):
     loader_iter = iter(valid_loader)#验证轮次迭代器
     num_pair = 0
     total_loss,total_acc_corr,total_acc_incorr=0,0,0
-    separ1_precision,separ1_recall=torch.zeros(model_config.layer_num, device='cuda'),torch.zeros(model_config.layer_num,device='cuda')
-    separ2_precision,separ2_recall=torch.zeros(model_config.layer_num,device='cuda'),torch.zeros(model_config.layer_num,device='cuda')
+    separ1_precision,separ1_recall=torch.zeros(1, device='cuda'),torch.zeros(1,device='cuda')
+    separ2_precision,separ2_recall=torch.zeros(1,device='cuda'),torch.zeros(1,device='cuda')
     # total_precision,total_recall=torch.zeros(model_config.layer_num ,device='cuda'),\
     #                              torch.zeros(model_config.layer_num ,device='cuda')
     total_acc_mid=torch.zeros(len(model_config.seedlayer)-1,device='cuda')
