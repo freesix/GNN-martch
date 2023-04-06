@@ -130,24 +130,6 @@ class attention_propagantion(nn.Module):
         return desc1_new
     
     
-class PointCN(nn.Module):
-    def __init__(self, channels,out_channels):
-        nn.Module.__init__(self)
-        self.shot_cut = nn.Conv1d(channels, out_channels, kernel_size=1)
-        self.conv = nn.Sequential(
-            nn.InstanceNorm1d(channels, eps=1e-3),
-            nn.SyncBatchNorm(channels),
-            nn.ReLU(),
-            nn.Conv1d(channels, channels, kernel_size=1),
-            nn.InstanceNorm1d(channels, eps=1e-3),
-            nn.SyncBatchNorm(channels),
-            nn.ReLU(),
-            nn.Conv1d(channels, out_channels, kernel_size=1)
-        )
-
-    def forward(self, x):
-        return self.conv(x) + self.shot_cut(x)
-
 
 class Separate_out(nn.Module):
     def __init__(self, channels, out_channels):
@@ -251,13 +233,13 @@ class matcher(nn.Module):
             self.mid_ditbin=nn.ParameterDict({str(i):nn.Parameter(torch.tensor(2,dtype=torch.float32)) for i in config.seedlayer[1:]})
             self.mid_final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
         
-    def forward(self,data,test_mode=True):
+    def forward(self,data,test_mode=False):
         x1, x2, desc1, desc2 = data['x1'][:,:,:2], data['x2'][:,:,:2], data['desc1'], data['desc2']
         desc1, desc2=torch.nn.functional.normalize(desc1,dim=-1), torch.nn.functional.normalize(desc2,dim=-1) #对描述子特征在最后一维进行L2范数归一化
-        if test_mode:
-            encode_x1,encode_x2=data['x1'],data['x2']
-        else:
-            encode_x1,encode_x2=data['aug_x1'],data['aug_x2']
+        # if test_mode:
+        encode_x1,encode_x2=data['x1'],data['x2']
+        # else:
+            # encode_x1,encode_x2=data['aug_x1'],data['aug_x2']
 
         desc_dismat=(2-2*torch.matmul(desc1,desc2.transpose(1,2))).sqrt() #计算两幅图特征点特征之间的距离
         values, nn_index=torch.topk(desc_dismat,k=2,largest=False,dim=-1,sorted=True) #取出图B中分别与图A中最近的2个点索引和距离值
@@ -308,14 +290,15 @@ class matcher(nn.Module):
                                                   self.conf_bar[seed_para_index],self.seed_radius_coe,test=test_mode)
                 seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)), nn_index_tower.append(nn_index1)
                 
-                if not test_mode and data['step']<self.detach_iter:
-                    aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
+                # if not test_mode and data['step']<self.detach_iter:
+                #     aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
 
             aug_desc1,aug_desc2,seed_weight1,seed_weight2,separate11_index,separate12_index,separate21_index,separate22_index = \
                                         self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2,self.separate_num1,self.separate_num2)
-            seed_weight1_tower.append(seed_weight1),seed_weight2_tower.append(seed_weight2)
-            separate1_index_tower.append(torch.stack([separate11_index,separate12_index],dim=-1))
-            separate2_index_tower.append(torch.stack([separate21_index,separate22_index],dim=-1))
+            
+        seed_weight1_tower.append(seed_weight1),seed_weight2_tower.append(seed_weight2)
+        separate1_index_tower.append(torch.stack([separate11_index,separate12_index],dim=-1))
+        separate2_index_tower.append(torch.stack([separate21_index,separate22_index],dim=-1))
         
         aug_desc1,aug_desc2 = self.final_project(aug_desc1), self.final_project(aug_desc2)
         cmat = torch.matmul(aug_desc1.transpose(1,2), aug_desc2) #欧式距离

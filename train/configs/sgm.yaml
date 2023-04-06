@@ -1,6 +1,6 @@
 seed_top_k: [256,256] #种子数量
 seed_radius_coe: 0.01 #NMS半径超参数
-net_channels: 128 #网络通道数量
+net_channels: 128 #网络特征维度
 layer_num: 9
 head: 4
 seedlayer: [0,6]

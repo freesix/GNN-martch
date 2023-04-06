@@ -17,8 +17,10 @@ def valid(valid_loader, model,match_loss, config,model_config):
     loader_iter = iter(valid_loader)#验证轮次迭代器
     num_pair = 0
     total_loss,total_acc_corr,total_acc_incorr=0,0,0
-    total_precision,total_recall=torch.zeros(model_config.layer_num ,device='cuda'),\
-                                 torch.zeros(model_config.layer_num ,device='cuda')
+    separ1_precision,separ1_recall=torch.zeros(model_config.layer_num, device='cuda'),torch.zeros(model_config.layer_num,device='cuda')
+    separ2_precision,separ2_recall=torch.zeros(model_config.layer_num,device='cuda'),torch.zeros(model_config.layer_num,device='cuda')
+    # total_precision,total_recall=torch.zeros(model_config.layer_num ,device='cuda'),\
+    #                              torch.zeros(model_config.layer_num ,device='cuda')
     total_acc_mid=torch.zeros(len(model_config.seedlayer)-1,device='cuda')
 
 
@@ -65,16 +67,16 @@ def valid(valid_loader, model,match_loss, config,model_config):
 
 def dump_train_vis(res,data,step,config):
     #batch matching
-    p=res['p'][:,:-1,:-1]
-    score,index1=torch.max(p,dim=-1)
-    _,index2=torch.max(p,dim=-2)
-    mask_th=score>0.2
+    p=res['p'][:,:-1,:-1] #获取分配矩阵
+    score,index1=torch.max(p,dim=-1) #每一列最大值
+    _,index2=torch.max(p,dim=-2) #每一行最大值
+    mask_th=score>0.2 #阈值
     mask_mc=index2.gather(index=index1,dim=1) == torch.arange(len(p[0])).cuda()[None]
     mask_p=mask_th&mask_mc#B*N
-
+    #x1:归一化后的坐标，kpt1：特征点原始坐标
     corr1,corr2=data['x1'],data['x2'].gather(index=index1[:,:,None].expand(-1,-1,2),dim=1)
     corr1_kpt,corr2_kpt=data['kpt1'],data['kpt2'].gather(index=index1[:,:,None].expand(-1,-1,2),dim=1)
-    epi_dis=batch_episym(corr1,corr2,data['e_gt'])
+    epi_dis=batch_episym(corr1,corr2,data['e_gt']) #按照变换矩阵求解坐标之间的匹配程度(越小代表映射后两坐标误差越小)
     mask_inlier=epi_dis<config.inlier_th#B*N
 
     #dump vis

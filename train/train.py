@@ -105,7 +105,8 @@ def train(model, train_loader, valid_loader, config,model_config):
             
 
         # valid ans save
-        b_save = ((step + 1) % config.save_intv) == 0
+        # b_save = ((step + 1) % config.save_intv) == 0
+        b_save = ((step + 1) % 5) == 0
         b_validate = ((step + 1) % config.val_intv) == 0
         if b_validate:
             total_loss,acc_corr,acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision_tower,total_recall_tower,acc_mid=\
@@ -131,7 +132,7 @@ def train(model, train_loader, valid_loader, config,model_config):
                      print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data)
                 
                 #saving best
-                if acc_corr > best_acc:
+                if acc_corr > best_acc: #验证模型，当准确率高于上次验证结果则保存最佳模型(best_acc初始化为-1)
                     print("Saving best model with va_res = {}".format(acc_corr))
                     best_acc = acc_corr
                     save_dict={'step': step + 1,
@@ -141,7 +142,7 @@ def train(model, train_loader, valid_loader, config,model_config):
                     save_dict.update(save_dict)
                     torch.save(save_dict, os.path.join(config.log_base, 'model_best.pth'))
 
-        if b_save:
+        if b_save: #保存断点模型
             if config.local_rank==0:
                 save_dict={'step': step + 1,
                 'state_dict': model.state_dict(),
