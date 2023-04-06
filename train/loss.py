@@ -21,13 +21,13 @@ def CELoss(seed_x1,seed_x2,e,confidence,inlier_th,batch_mask=1):
     ys=batch_episym(seed_x1,seed_x2,e)#计算种子坐标点之间的匹配程度
     mask_pos,mask_neg=(ys<=inlier_th).float(),(ys>inlier_th).float() #根据预设值将这些种子点匹配分为匹配和不匹配
     num_pos,num_neg=torch.relu(torch.sum(mask_pos, dim=1) - 1.0) + 1.0,torch.relu(torch.sum(mask_neg, dim=1) - 1.0) + 1.0 #计算匹配和不匹配数量
-    loss_pos,loss_neg=-torch.log(abs(confidence) + 1e-8)*mask_pos,-torch.log(abs(1-confidence)+1e-8)*mask_neg
+    loss_pos,loss_neg=-torch.log(abs(confidence) + 2e-7)*mask_pos,-torch.log(abs(1-confidence)+2e-7)*mask_neg
     classif_loss = torch.mean(loss_pos * 0.5 / num_pos.unsqueeze(-1) + loss_neg * 0.5 / num_neg.unsqueeze(-1),dim=-1)
     classif_loss =classif_loss*batch_mask
     classif_loss=classif_loss.mean() #整个批次的平均分类损失
     precision = torch.mean(
         torch.sum((confidence > 0.5).type(confidence.type()) * mask_pos, dim=1) /
-        (torch.sum((confidence > 0.5).type(confidence.type()), dim=1)+1e-8)
+        (torch.sum((confidence > 0.5).type(confidence.type()), dim=1)+2e-7)
     )
     recall = torch.mean(
         torch.sum((confidence > 0.5).type(confidence.type()) * mask_pos, dim=1) /
@@ -40,7 +40,7 @@ def CorrLoss(desc_mat,batch_num_corr,batch_num_incorr1,batch_num_incorr2):
     total_loss_corr,total_loss_incorr=0,0
     total_acc_corr,total_acc_incorr=0,0
     batch_size = desc_mat.shape[0]
-    log_p=torch.log(abs(desc_mat)+1e-8) #求取分配矩阵每个元素的log值
+    log_p=torch.log(abs(desc_mat)+2e-7) #求取分配矩阵每个元素的log值
 
     for i in range(batch_size): #按照batch循环
         cur_log_p=log_p[i]

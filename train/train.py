@@ -5,6 +5,7 @@ import os
 from tensorboardX import SummaryWriter
 import numpy as np
 import cv2
+from torch.cuda.amp.grad_scaler import GradScaler 
 from loss import GSNLoss
 from valid import valid,dump_train_vis
 
@@ -16,22 +17,28 @@ sys.path.insert(0, ROOT_DIR)
 from utils import train_utils
 # train_step(optimizer, model, match_loss, train_data,step-start_step,pre_avg_loss)
 def train_step(optimizer, model, match_loss, data,step,pre_avg_loss):
+    scaler = GradScaler()
     data['step']=step
-    result=model(data,test_mode=False) # 模型训练
-    loss_res=match_loss.run(data,result) # 计算损失
-    
     optimizer.zero_grad() #清空梯度
-    loss_res['total_loss'].backward() #损失加入反向传播
+    with torch.autocast(device_type='cuda',dtype=torch.float16):
+        result=model(data,test_mode=False) # 模型训练
+        loss_res=match_loss.run(data,result) # 计算损失
+    
+    
+    scaler.scale(loss_res['total_loss']).backward() #损失加入反向传播
     #apply reduce on all record tensor
     for key in loss_res.keys():
         loss_res[key]=train_utils.reduce_tensor(loss_res[key],'mean') #将分布式训练的损失函数梯度合并更新梯度然后广播回各个分布式设备
   
     if loss_res['total_loss']<7*pre_avg_loss or step<200 or pre_avg_loss==0:
-        optimizer.step()
+        # optimizer.step()
+        scaler.step(optimizer)
         unusual_loss=False
     else:
-        optimizer.zero_grad()
+        # optimizer.zero_grad()
+        scaler.step(optimizer)
         unusual_loss=True
+    scaler.update()
     return loss_res,unusual_loss
 
 

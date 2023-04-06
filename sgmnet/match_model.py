@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-eps=1e-8 #防止sink_horn算法过程中分母为0的因子
+eps=2e-7 #防止sink_horn算法过程中分母为0的因子
 
 def sinkhorn(M,r,c,iteration):
     p = torch.softmax(M, dim=-1)

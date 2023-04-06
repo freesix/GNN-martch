@@ -42,7 +42,7 @@ class ExtractSIFT:
         index = np.flip(np.argsort(kp[:,2]))#np.flip按照指点维度翻转，未指定则所有维度均翻转
         kp,desc = kp[index], desc[index]
         if self.root:
-            desc = np.sqrt(abs(desc/(np.linalg.norm(desc,axis=-1,ord=1)[:,np.newaxis]+1e-8)))
+            desc = np.sqrt(abs(desc/(np.linalg.norm(desc,axis=-1,ord=1)[:,np.newaxis]+2e-7)))
         return kp[:self.num_kp], desc[:self.num_kp]
     
 
