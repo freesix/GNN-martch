@@ -1,4 +1,5 @@
 import argparse 
+import os
 
 def str2bool(v):
     return v.lower() in ('true', "1")
@@ -57,6 +58,9 @@ train_arg.add_argument("--local_rank", type=int, default=0, help="分布式计�
 train_arg.add_argument("--train_vis_folder", type=str, default='.', help="训练期间可视化目录")
 
 
+train_arg.add_argument("--nodes", default=1, type=int, help="分布式训练的节点")
+train_arg.add_argument("--ngpus_per_node", default=1, type=int, help="节点中gpu数量")
+train_arg.add_argument("--node_rank", default=0, type=int ,help="分布式训练的node_rank")
 
 #可视化相关
 vis_arg = add_argument_group('Visualization')

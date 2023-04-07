@@ -25,7 +25,7 @@ def valid(valid_loader, model,match_loss, config,model_config):
 
 
     with torch.no_grad():#梯度清零
-        if config.local_rank==0:
+        if config.local_rank is not None:
             loader_iter=tqdm(loader_iter)
             print('validating...')
         for test_data in loader_iter:
