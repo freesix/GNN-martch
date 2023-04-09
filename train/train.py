@@ -6,8 +6,10 @@ from tensorboardX import SummaryWriter
 import numpy as np
 import cv2
 from torch.cuda.amp.grad_scaler import GradScaler 
+import torch.distributed as dist
 from loss import GSNLoss
 from valid import valid,dump_train_vis
+from distributed_utils import is_main_process
 
 import sys
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))#文件根目录的绝对路径
@@ -40,7 +42,7 @@ def train_step(optimizer, model, match_loss, data,step,pre_avg_loss):
     return loss_res,unusual_loss
 
 
-def train(model, train_loader, valid_loader, config,model_config):
+def train(model, train_loader, valid_loader, config,model_config, train_sampler):
     model.train()
     optimizer = optim.Adam(model.parameters(), lr=config.train_lr)#初始化优化器
     
@@ -52,8 +54,8 @@ def train(model, train_loader, valid_loader, config,model_config):
     checkpoint_path = os.path.join(config.log_base, 'checkpoint.pth')#config.log_base为log路径,也为断点路径
     config.resume = os.path.isfile(checkpoint_path)#是否存在断点
     if config.resume:
-        if config.local_rank is not None:
-            print('==> 从断点恢复')
+        # if get_rank == 0: #暂时注释掉这行是测试print是否only on master
+        print('==> 从断点恢复')
         checkpoint = torch.load(checkpoint_path,map_location='cuda:{}'.format(config.local_rank))# 加载模型文件到GPU上
 
         model.load_state_dict(checkpoint['state_dict']) #加载模型的断点前训练权重
@@ -63,22 +65,25 @@ def train(model, train_loader, valid_loader, config,model_config):
     else: # 没有断点文件，就初始化训练步骤等参数从头开始训练
         best_acc = -1
         start_step = 0
-    train_loader_iter = iter(train_loader) # 创建一个迭代对象
     
-    if config.local_rank is not None:
+    if is_main_process():
         writer=SummaryWriter(os.path.join(config.log_base,'log_file'))#运行的log数据均存于此(初始化summarywriter)
 
-    train_loader.sampler.set_epoch(start_step*config.train_batch_size//len(train_loader.dataset))#设置ddp采样
+    train_sampler.set_epoch(start_step*config.train_batch_size//len(train_loader.dataset))#设置ddp采样 
+    train_loader_iter = iter(train_loader) # 创建一个迭代对象
     pre_avg_loss=0
     #start_step:开始的步骤，中断时记录中断步骤。train_iter:迭代次数
-    progress_bar=trange(start_step, config.train_iter,ncols=config.tqdm_width) if config.local_rank is not None else range(start_step, config.train_iter)#进度条参数
-    for step in progress_bar:
+    if is_main_process():
+        progress_bar=trange(start_step, config.train_iter,ncols=config.tqdm_width)
+    else:
+        progress_bar=range(start_step, config.train_iter)#进度条参数
+    for step in progress_bar: #所有训练轮次循环
         try:
             train_data = next(train_loader_iter)
         except StopIteration:
-            if config.local_rank is not None:
-                print('epoch: ',step*config.train_batch_size//len(train_loader.dataset))
-            train_loader.sampler.set_epoch(step*config.train_batch_size//len(train_loader.dataset))
+            # if get_rank == 0:
+            print('epoch: ',step*config.train_batch_size//len(train_loader.dataset))
+            train_sampler.set_epoch(step*config.train_batch_size//len(train_loader.dataset))
             train_loader_iter = iter(train_loader)
             train_data = next(train_loader_iter)
     
@@ -93,10 +98,10 @@ def train(model, train_loader, valid_loader, config,model_config):
             pre_avg_loss=loss_res['total_loss'].data
         if (step-start_step)>200 and not unusual_loss:
             pre_avg_loss=pre_avg_loss.data*0.9+loss_res['total_loss'].data*0.1
-        if unusual_loss and config.local_rank is not None:
+        if unusual_loss and is_main_process():
             print('unusual loss! pre_avg_loss: ',pre_avg_loss,'cur_loss: ',loss_res['total_loss'].data)
         #log
-        if config.local_rank is not None and step%config.log_intv==0 and not unusual_loss:
+        if is_main_process() and step%config.log_intv==0 and not unusual_loss:
             writer.add_scalar('TotalLoss',loss_res['total_loss'],step)
             writer.add_scalar('CorrLoss',loss_res['loss_corr'],step)
             writer.add_scalar('InCorrLoss', loss_res['loss_incorr'], step)
@@ -110,13 +115,12 @@ def train(model, train_loader, valid_loader, config,model_config):
             
 
         # valid ans save
-        # b_save = ((step + 1) % config.save_intv) == 0
-        b_save = ((step + 1) % 5) == 0
+        b_save = ((step + 1) % config.save_intv) == 0
         b_validate = ((step + 1) % config.val_intv) == 0
         if b_validate:
             total_loss,acc_corr,acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision_tower,total_recall_tower,acc_mid=\
                 valid(valid_loader, model, match_loss, config,model_config)
-            if config.local_rank is not None:
+            if is_main_process():
                 writer.add_scalar('ValidAcc', acc_corr, step)
                 writer.add_scalar('ValidLoss', total_loss, step)
                 
@@ -126,8 +130,6 @@ def train(model, train_loader, valid_loader, config,model_config):
                         writer.add_scalar('separ1_conf_recall_%d' % i, separ1_recall[i], step)
                         writer.add_scalar('separ2_conf_pre_%d'%i,separ2_precision[i],step)
                         writer.add_scalar('separ2_conf_recall_%d'%i, separ2_recall[i], step)
-                        writer.add_scalar('total_conf_pre_%d'%i,total_precision_tower[i],step)
-                        writer.add_scalar('total_conf_racall_%d'%i,total_recall_tower[i],step)
                     for i in range(len(acc_mid)):
                         writer.add_scalar('acc_mid%d'%i,acc_mid[i],step)
                     print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data,'separ1_conf_pre: ',separ1_precision.mean().data,'separ1_conf_recall: ',\
@@ -148,7 +150,7 @@ def train(model, train_loader, valid_loader, config,model_config):
                     torch.save(save_dict, os.path.join(config.log_base, 'model_best.pth'))
 
         if b_save: #保存断点模型
-            if config.local_rank is not None:
+            if is_main_process():
                 save_dict={'step': step + 1,
                 'state_dict': model.state_dict(),
                 'best_acc': best_acc,
@@ -158,7 +160,7 @@ def train(model, train_loader, valid_loader, config,model_config):
             #draw match results
             model.eval()
             with torch.no_grad():
-                if config.local_rank is not None:
+                if is_main_process():
                     if not os.path.exists(os.path.join(config.train_vis_folder,'train_vis')):
                         os.mkdir(os.path.join(config.train_vis_folder,'train_vis'))
                     if not os.path.exists(os.path.join(config.train_vis_folder,'train_vis',config.log_base)):
@@ -168,5 +170,5 @@ def train(model, train_loader, valid_loader, config,model_config):
                 dump_train_vis(res,train_data,step,config)
             model.train()
     
-    if config.local_rank is not None:
+    if is_main_process():
         writer.close()

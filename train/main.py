@@ -9,6 +9,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from sgmnet.match_model import matcher as SGM_Modle
 from train import train
+from distributed_utils import is_main_process,setup_for_distributed #修改分布式下的print函数
 # torch.backends.cudnn.enable=True
 # torch.backends.cudnn.benchmark=True
 
@@ -28,6 +29,8 @@ def main(local_rank, ngpus_per_node, config):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '5678'
     dist.init_process_group(backend='nccl', init_method='env://', rank=config.rank, world_size=config.world_size)   
+    dist.barrier() #同步所有进程
+    setup_for_distributed(config.rank == 0)
     torch.cuda.set_device(config.local_rank)
     device = torch.device("cuda:{}".format(config.local_rank))
     #将模型载入cuda并配置多进程设置
@@ -37,24 +40,22 @@ def main(local_rank, ngpus_per_node, config):
      
     # 这里的find_unused_parameters参数是因为网络层中有些参数未参与反向传播，后续设计将其考虑进去
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.local_rank],find_unused_parameters=True)
-    
-
-    if config.local_rank is not None:
+    if is_main_process():
         os.system('nvidia-smi')
     #dataloader
     train_dataset = Offline_Dataset(config, 'train')
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset,shuffle=True)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.train_batch_size//torch.distributed.get_world_size(),
-                    num_workers=8//dist.get_world_size(), pin_memory=False, sampler=train_sampler, collate_fn=train_dataset.collate_fn)
+    train_batch_sampler = torch.utils.data.BatchSampler(train_sampler,batch_size=config.train_batch_size//torch.distributed.get_world_size(),drop_last=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset,pin_memory=False, batch_sampler=train_batch_sampler, collate_fn=train_dataset.collate_fn)
 
     valid_dataset = Offline_Dataset(config, 'valid')
     valid_sampler = torch.utils.data.distributed.DistributedSampler(valid_dataset,shuffle=False)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset,batch_size=config.train_batch_size,
-                    num_workers=8//dist.get_world_size(), pin_memory=False,collate_fn=valid_dataset.collate_fn,sampler=valid_sampler)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset,batch_size=config.train_batch_size//torch.distributed.get_world_size(),
+                                                pin_memory=False,collate_fn=valid_dataset.collate_fn,sampler=valid_sampler)
     
-    if config.local_rank is not None:
+    if is_main_process():
         print('开始训练')
-        train(model,train_loader,valid_loader,config,model_config)
+        train(model,train_loader,valid_loader,config,model_config,train_sampler)
     # print(train_loader)
 
 if __name__ == '__main__':

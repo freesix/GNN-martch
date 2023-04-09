@@ -4,12 +4,13 @@ import cv2
 import os
 from loss import batch_episym
 from tqdm import tqdm
-
+import torch.distributed as dist
 import sys
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT_DIR)
 
 from utils import evaluation_utils,train_utils
+from distributed_utils import is_main_process
 
 
 def valid(valid_loader, model,match_loss, config,model_config):
@@ -25,7 +26,7 @@ def valid(valid_loader, model,match_loss, config,model_config):
 
 
     with torch.no_grad():#梯度清零
-        if config.local_rank is not None:
+        if is_main_process():
             loader_iter=tqdm(loader_iter)
             print('validating...')
         for test_data in loader_iter:
@@ -33,6 +34,7 @@ def valid(valid_loader, model,match_loss, config,model_config):
             test_data = train_utils.tocuda(test_data)
             res= model(test_data)
             loss_res=match_loss.run(test_data,res)
+            dist.barrier()
            
             total_acc_corr+=loss_res['acc_corr']
             total_acc_incorr+=loss_res['acc_incorr']
