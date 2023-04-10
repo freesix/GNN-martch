@@ -1,4 +1,4 @@
-seed_top_k: [256,256] #种子数量
+seed_top_k: [200,200] #种子数量
 seed_radius_coe: 0.01 #NMS半径超参数
 net_channels: 128 #网络特征维度
 layer_num: 9
@@ -12,5 +12,5 @@ detach_iter: 140000
 p_th: 0.2
 domain_topk: 10
 domain_radiues: 0.01
-separate_num1: 200
+separate_num1: 176
 separate_num2: 128
