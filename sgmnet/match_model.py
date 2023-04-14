@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
+import torch.distributed as dist
 eps=2e-7 #防止sink_horn算法过程中分母为0的因子
 
 def sinkhorn(M,r,c,iteration):
@@ -16,10 +17,10 @@ def sinkhorn(M,r,c,iteration):
 def sink_algorithm(M,dustbin,iteration):
     M = torch.cat([M, dustbin.expand([M.shape[0], M.shape[1], 1])], dim=-1)
     M = torch.cat([M, dustbin.expand([M.shape[0], 1, M.shape[2]])], dim=-2)
-    r = torch.ones([M.shape[0], M.shape[1] - 1],device='cuda')
-    r = torch.cat([r, torch.ones([M.shape[0], 1],device='cuda') * M.shape[1]], dim=-1)
-    c = torch.ones([M.shape[0], M.shape[2] - 1],device='cuda')
-    c = torch.cat([c, torch.ones([M.shape[0], 1],device='cuda') * M.shape[2]], dim=-1)
+    r = torch.ones([M.shape[0], M.shape[1] - 1],device=("cuda:{}".format(dist.get_rank())))
+    r = torch.cat([r, torch.ones([M.shape[0], 1],device=("cuda:{}".format(dist.get_rank()))) * M.shape[1]], dim=-1)
+    c = torch.ones([M.shape[0], M.shape[2] - 1],device=("cuda:{}".format(dist.get_rank())))
+    c = torch.cat([c, torch.ones([M.shape[0], 1],device=("cuda:{}".format(dist.get_rank()))) * M.shape[2]], dim=-1)
     
 
     p=sinkhorn(M,r,c,iteration)
@@ -29,8 +30,11 @@ def sink_algorithm(M,dustbin,iteration):
 def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc=True,test=False):
 
     if use_mc: #检查是否有非相互匹配
-        mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device='cuda')
+        mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device=("cuda:{}".format(dist.get_rank())))
         match_score[mask_not_mutual]=-1
+        test1=match_score[match_score==-1]
+        print(sum(test1))
+
     # 非极大值抑制算法
     pos_dismat1=((x1.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x1.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x1@x1.transpose(1,2))).abs_().sqrt_() #abs_()和abs()的区别在于abs_()会在本地创建一个张量，改变张量本身的值
     x2=x2.gather(index=nn_index1.unsqueeze(-1).expand(-1,-1,2),dim=1) #获取x2在nn_index1索引中的值
@@ -66,12 +70,12 @@ def domain(pos_dismat1,pos_dismat2,domain_topk,domain_radiues,desc1,desc2):
     indices1[values1>dis1_radiues]=indices1_nearest[values1>dis1_radiues]
     indices2[values2>dis2_radiues]=indices2_nearest[values2>dis2_radiues]
 
-    desc1_domain=torch.tensor([],device='cuda')
+    desc1_domain=torch.tensor([],device=("cuda:{}".format(dist.get_rank())))
     for i in range(indices1.shape[-1]):
         domain_desc1=desc1.gather(dim=-1, index=indices1[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
         domain_desc1=domain_desc1.unsqueeze(-1)
         desc1_domain=torch.cat([desc1_domain,domain_desc1],dim=-1)
-    desc2_domain=torch.tensor([],device='cuda')
+    desc2_domain=torch.tensor([],device=("cuda:{}".format(dist.get_rank())))
     for i in range(indices1.shape[-1]):
         domain_desc2=desc2.gather(dim=-1, index=indices2[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
         domain_desc2=domain_desc2.unsqueeze(-1)
@@ -157,8 +161,18 @@ class Separate_out(nn.Module):
         new_desc1 = desc1.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
         new_desc2 = desc2.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
         return values,new_desc1,new_desc2,separate_index1,separate_index2
-        
-        
+
+#余弦距离评价函数        
+# def Separate_out(separate_num,desc1, desc2, seed_index1, seed_index2, channel):
+#     out = F.cosine_similarity(desc1,desc2,dim=1)
+#     evalu_score=torch.sigmoid(out).squeeze(1)
+#     values, indices = torch.topk(evalu_score,k=separate_num,dim=1)
+#     separate_index1 = seed_index1.gather(dim=-1, index=indices)
+#     separate_index2 = seed_index2.gather(dim=-1, index=indices)
+#     new_desc1 = desc1.gather(dim=-1,index=indices.unsqueeze(1).expand(-1,channel,-1))
+#     new_desc2 = desc2.gather(dim=-1,index=indices.unsqueeze(1).expand(-1,channel,-1))
+#     return values,new_desc1,new_desc2,separate_index1,separate_index2
+    
                 
     
 class hybrid_block(nn.Module):
@@ -187,6 +201,9 @@ class hybrid_block(nn.Module):
         #                                                                                         seed_index1,seed_index2,cluster1,cluster2,self.channel)
         cn1_weight, separate1, separate2, separate11_index, separate12_index = self.separate_down(torch.cat([cluster1,cluster2],dim=1),\
                                                             separate_num1,cluster1,cluster2,seed_index1,seed_index2,self.channel)
+        # cn1_weight, separate1, separate2, separate11_index, separate12_index = Separate_out(separate_num1,cluster1,cluster2,seed_index1,seed_index2,self.channel)
+
+        
         concate_cluster = self.cluster_filter(torch.cat([separate1, separate2], dim=1)) #  将两张图像析出特征点合起来
 
         cluster1, cluster2 = self.cross_filter(concate_cluster[:, :self.channel], concate_cluster[:, self.channel:]), \
@@ -194,6 +211,8 @@ class hybrid_block(nn.Module):
         cluster1, cluster2 = self.attention_block_self(cluster1,cluster1), self.attention_block_self(cluster2, cluster2) #图像自聚合
         cn2_weight, separate1, separate2, separate21_index, separate22_index= self.separate_up(torch.cat([cluster1,cluster2],dim=1),\
                                                     separate_num2,cluster1,cluster2, separate11_index, separate12_index, self.channel)
+        # cn2_weight, separate1, separate2, separate21_index, separate22_index= Separate_out(separate_num2,cluster1,cluster2, separate11_index, separate12_index, self.channel)
+
         desc1_new, desc2_new=self.attention_block_up(desc1,separate1,cn2_weight), self.attention_block_up(desc2, separate2,cn2_weight)
         return desc1_new,desc2_new,cn1_weight,cn2_weight,separate11_index,separate12_index,separate21_index,separate22_index
 
@@ -291,7 +310,7 @@ class matcher(nn.Module):
                                                   self.conf_bar[seed_para_index],self.seed_radius_coe,test=test_mode)
                 seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)), nn_index_tower.append(nn_index1)
                 
-                if not test_mode and data['step']<self.detach_iter:
+                if not test_mode and data['step']<self.detach_iter: #再前detach轮次重播种层中aug_desc不参与梯度更新
                     aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
 
             aug_desc1,aug_desc2,seed_weight1,seed_weight2,separate11_index,separate12_index,separate21_index,separate22_index = \

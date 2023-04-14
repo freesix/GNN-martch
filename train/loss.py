@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-
+import torch.distributed as dist
 
 def batch_episym(x1, x2, F):
     batch_size, num_pts = x1.shape[0], x1.shape[1] #batch和种子点坐标数量
@@ -56,8 +56,8 @@ def CorrLoss(desc_mat,batch_num_corr,batch_num_incorr1,batch_num_incorr2):
         acc_incorr=((value_row[num_corr:num_corr+num_incorr1]<0.2).float().mean()+
                     (value_col[num_corr:num_corr+num_incorr2]<0.2).float().mean())/2
 
-        acc_row_mask = row_index[:num_corr] == torch.arange(num_corr).cuda()
-        acc_col_mask = col_index[:num_corr] == torch.arange(num_corr).cuda()
+        acc_row_mask = row_index[:num_corr] == torch.arange(num_corr).cuda(device=("cuda:{}".format(dist.get_rank())))
+        acc_col_mask = col_index[:num_corr] == torch.arange(num_corr).cuda(device=("cuda:{}".format(dist.get_rank())))
         acc = (acc_col_mask & acc_row_mask).float().mean()
      
         total_loss_corr+=loss_corr
@@ -88,7 +88,8 @@ class GSNLoss:
         if len(result['mid_p'])!=0:
             loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.stack(loss_mid_incorr_tower),torch.stack(loss_mid_incorr_tower),torch.stack(acc_mid_tower)
         else: #如果没有中间计算分配矩阵(重新播种)这些值赋为零
-            loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.zeros(1).cuda(),torch.zeros(1).cuda(),torch.zeros(1).cuda()
+            loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),\
+                torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank())))
             
         # 析出种子损失
         separ1_loss_tower,separ1_precision_tower,separ1_recall_tower=[],[],[]

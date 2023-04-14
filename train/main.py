@@ -30,8 +30,8 @@ def main(local_rank, ngpus_per_node, config):
     os.environ['MASTER_PORT'] = '5678'
     dist.init_process_group(backend='nccl', init_method='env://', rank=config.rank, world_size=config.world_size)   
     dist.barrier() #同步所有进程
-    setup_for_distributed(config.rank == 0)
-    torch.cuda.set_device(config.local_rank)
+    # setup_for_distributed(config.rank == 0)
+    # torch.cuda.set_device(config.local_rank)
     device = torch.device("cuda:{}".format(config.local_rank))
     #将模型载入cuda并配置多进程设置
     model.to(device)
@@ -39,7 +39,7 @@ def main(local_rank, ngpus_per_node, config):
     #初始化多线程计算组
      
     # 这里的find_unused_parameters参数是因为网络层中有些参数未参与反向传播，后续设计将其考虑进去
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.local_rank],find_unused_parameters=True)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[config.local_rank],output_device=config.local_rank, find_unused_parameters=True)
     if is_main_process():
         os.system('nvidia-smi')
     #dataloader
@@ -55,7 +55,7 @@ def main(local_rank, ngpus_per_node, config):
     
     if is_main_process():
         print('开始训练')
-        train(model,train_loader,valid_loader,config,model_config,train_sampler)
+    train(model,train_loader,valid_loader,config,model_config,train_sampler)
     # print(train_loader)
 
 if __name__ == '__main__':

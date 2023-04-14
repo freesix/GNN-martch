@@ -18,11 +18,11 @@ def valid(valid_loader, model,match_loss, config,model_config):
     loader_iter = iter(valid_loader)#验证轮次迭代器
     num_pair = 0
     total_loss,total_acc_corr,total_acc_incorr=0,0,0
-    separ1_precision,separ1_recall=torch.zeros(1, device='cuda'),torch.zeros(1,device='cuda')
-    separ2_precision,separ2_recall=torch.zeros(1,device='cuda'),torch.zeros(1,device='cuda')
+    separ1_precision,separ1_recall=torch.zeros(1, device=("cuda:{}".format(dist.get_rank()))),torch.zeros(1,device=("cuda:{}".format(dist.get_rank())))
+    separ2_precision,separ2_recall=torch.zeros(1,device=("cuda:{}".format(dist.get_rank()))),torch.zeros(1,device=("cuda:{}".format(dist.get_rank())))
     # total_precision,total_recall=torch.zeros(model_config.layer_num ,device='cuda'),\
     #                              torch.zeros(model_config.layer_num ,device='cuda')
-    total_acc_mid=torch.zeros(len(model_config.seedlayer)-1,device='cuda')
+    total_acc_mid=torch.zeros(len(model_config.seedlayer)-1,device=("cuda:{}".format(dist.get_rank())))
 
 
     with torch.no_grad():#梯度清零
@@ -73,7 +73,7 @@ def dump_train_vis(res,data,step,config):
     score,index1=torch.max(p,dim=-1) #每一列最大值
     _,index2=torch.max(p,dim=-2) #每一行最大值
     mask_th=score>0.2 #阈值
-    mask_mc=index2.gather(index=index1,dim=1) == torch.arange(len(p[0])).cuda()[None]
+    mask_mc=index2.gather(index=index1,dim=1) == torch.arange(len(p[0])).cuda(("cuda:{}".format(dist.get_rank())))[None]
     mask_p=mask_th&mask_mc#B*N
     #x1:归一化后的坐标，kpt1：特征点原始坐标
     corr1,corr2=data['x1'],data['x2'].gather(index=index1[:,:,None].expand(-1,-1,2),dim=1)

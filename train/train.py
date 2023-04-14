@@ -26,7 +26,7 @@ def train_step(optimizer, model, match_loss, data,step,pre_avg_loss):
         loss_res=match_loss.run(data,result) # 计算损失
     
     
-    scaler.scale(loss_res['total_loss']).backward() #损失加入反向传播
+    scaler.scale(loss_res['total_loss']).backward() #损失加入反向传c
     #apply reduce on all record tensor
     for key in loss_res.keys():
         loss_res[key]=train_utils.reduce_tensor(loss_res[key],'mean') #将分布式训练的损失函数梯度合并更新梯度然后广播回各个分布式设备
@@ -34,11 +34,12 @@ def train_step(optimizer, model, match_loss, data,step,pre_avg_loss):
     if loss_res['total_loss']<7*pre_avg_loss or step<200 or pre_avg_loss==0:
         # optimizer.step()
         scaler.step(optimizer)
+        scaler.update()
         unusual_loss=False
     else:
         optimizer.zero_grad()
         unusual_loss=True
-    scaler.update()
+    
     return loss_res,unusual_loss
 
 
@@ -88,6 +89,7 @@ def train(model, train_loader, valid_loader, config,model_config, train_sampler)
             train_data = next(train_loader_iter)
     
         train_data = train_utils.tocuda(train_data)#将数据重新载入gpu
+        # lr=((step/config.decay_iter) * config.train_lr) if step < config.decay_iter else (config.train_lr*config.decay_rate**(step-config.decay_iter))
         lr=min(config.train_lr*config.decay_rate**(step-config.decay_iter),config.train_lr)
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
@@ -106,7 +108,11 @@ def train(model, train_loader, valid_loader, config,model_config, train_sampler)
             writer.add_scalar('CorrLoss',loss_res['loss_corr'],step)
             writer.add_scalar('InCorrLoss', loss_res['loss_incorr'], step)
             writer.add_scalar('dustbin', model.module.dustbin, step)
+            writer.add_scalar('acc_corr',loss_res['acc_corr'], step)
+            writer.add_scalar('acc_incorr',loss_res['acc_incorr'], step)
+            writer.add_scalar('acc_mid_corr',loss_res['mid_acc_corr'], step)
 
+         
             if config.model_name=='SGM':
                 writer.add_scalar('Separ1ConfLoss', loss_res['loss_separ1_conf'], step)
                 writer.add_scalar('Separ2ConfLoss', loss_res['loss_separ2_conf'], step)

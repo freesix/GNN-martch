@@ -7,8 +7,8 @@ import cv2
 #分析的是pair_num.txt文件中信息
 def parse_pair_seq(pair_num_list):
 
-    pair_num=int(pair_num_list[0,1]) 
-    pair_num_list=pair_num_list[1:] 
+    pair_num=int(pair_num_list[0,1])#总共配对数量 
+    pair_num_list=pair_num_list[1:] #每个文件夹下配对数量
     pair_seq_list=[]
     cursor=0
     accu_pair_num={}
@@ -16,18 +16,18 @@ def parse_pair_seq(pair_num_list):
     for line in pair_num_list:
         seq, seq_pair_num=line[0], int(line[1])
         for _ in range(seq_pair_num):
-            pair_seq_list.append(seq)
+            pair_seq_list.append(seq) #所有配对文件夹名称按照各自配对数量复制份数排列
         accu_pair_num[seq]=cursor
-        cursor+=seq_pair_num
+        cursor+=seq_pair_num #加和各个配对数量等不等于总数量
 
-    assert pair_num==cursor 
+    assert pair_num==cursor  #检查数量是否匹配
     return pair_seq_list, accu_pair_num
 
 #将数据tensor类型数据加载进cuda
 def tocuda(data):
     for key in data.keys():
         if type(data[key]) == torch.Tensor:
-            data[key] = data[key].cuda()
+            data[key] = data[key].cuda(device=("cuda:{}".format(dist.get_rank())))
     return data 
 
 
