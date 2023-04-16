@@ -44,9 +44,9 @@ loss_arg.add_argument("--inlier_th", type=float, default=5e-3, help="内在关�
 
 #训练相关参数
 train_arg = add_argument_group("Train")
-train_arg.add_argument("--train-lr", type=float, default=1e-3, help="学习率")
+train_arg.add_argument("--train-lr", type=float, default=1e-4, help="学习率")
 train_arg.add_argument("--train_batch_size", type=int, default=8, help="batch size")
-train_arg.add_argument("--gpu_id", type=str, default='0', help="CUDA_VISIBLE_DEVICES的id")
+# train_arg.add_argument("--gpu_id", type=str, default='0', help="CUDA_VISIBLE_DEVICES的id")
 train_arg.add_argument("--train_iter", type=int, default=100, help="训练轮次")
 train_arg.add_argument("--log_base", type=str, default='./log/', help="log的路径")
 train_arg.add_argument("--val_intv", type=int, default=100, help="验证的间隔")

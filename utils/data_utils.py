@@ -105,17 +105,17 @@ def make_corr(kp1,kp2,desc1,desc2,depth1,depth2,K1,K2,dR,dt,size1,size2,corr_th,
     [kp1_2,kp2_1],[valid1_2,valid2_1]=reprojection_2s(kp1,kp2,depth1,depth2,K1,K2,dR,dt,size1,size2)
     num_pts1, num_pts2 = kp1.shape[0], kp2.shape[0]
     #计算映射前后对应点的距离之差
-    dis_mat1=np.sqrt(abs((kp1 ** 2).sum(1,keepdims=True) + (kp2_1 ** 2).sum(1,keepdims=False)[np.newaxis] - 2 * np.matmul(kp1, kp2_1.T)))
+    dis_mat1=np.sqrt(abs((kp1 ** 2).sum(1,keepdims=True) + (kp2_1 ** 2).sum(1,keepdims=False)[np.newaxis] - 2 * np.matmul(kp1, kp2_1.T))) #2映射到1
     dis_mat2 =np.sqrt(abs((kp2 ** 2).sum(1,keepdims=True) + (kp1_2 ** 2).sum(1,keepdims=False)[np.newaxis] - 2 * np.matmul(kp2,kp1_2.T)))
-    repro_error = np.maximum(dis_mat1,dis_mat2.T) #n1*n2
+    repro_error = np.maximum(dis_mat1,dis_mat2.T) #n1*n2 #逐元素比较得最大值
     
     # find corr index
     nn_sort1 = np.argmin(repro_error, axis=1)#返回每一行最小元素索引
     nn_sort2 = np.argmin(repro_error, axis=0) #返回每一列最小元素索引
-    mask_mutual = nn_sort2[nn_sort1] == np.arange(kp1.shape[0])
-    mask_inlier=np.take_along_axis(repro_error,indices=nn_sort1[:,np.newaxis],axis=-1).squeeze(1)<corr_th
+    mask_mutual = nn_sort2[nn_sort1] == np.arange(kp1.shape[0]) #最近匹配都为对方的为True
+    mask_inlier=np.take_along_axis(repro_error,indices=nn_sort1[:,np.newaxis],axis=-1).squeeze(1)<corr_th #在阈值内的为True
     mask = mask_mutual&mask_inlier
-    corr_index=np.stack([np.arange(num_pts1)[mask], np.arange(num_pts2)[nn_sort1[mask]]], axis=-1)
+    corr_index=np.stack([np.arange(num_pts1)[mask], np.arange(num_pts2)[nn_sort1[mask]]], axis=-1) #正确匹配的索引
     
     if check_desc:
         #filter kpt in same pos using desc distance(e.g. DoG kpt)

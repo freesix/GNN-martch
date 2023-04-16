@@ -104,11 +104,11 @@ class Offline_Dataset(data.Dataset):
             else:
                 raise NotImplementedError
             
-            corr=data['corr'][str(index_within_seq)][()]
-            incorr1, incorr2=data['incorr1'][str(index_within_seq)][()], data['incorr2'][str(index_within_seq)][()]
+            corr=data['corr'][str(index_within_seq)][()] #正确匹配标签
+            incorr1, incorr2=data['incorr1'][str(index_within_seq)][()], data['incorr2'][str(index_within_seq)][()] #满足预设条件的分别错误匹配点
 
         #给kpt排序
-        valid_corr=corr[corr.max(axis=-1) < self.config.num_kpt]
+        valid_corr=corr[corr.max(axis=-1) < self.config.num_kpt] #保证匹配点索引小于num_kpt
         valid_incorr1, valid_incorr2=incorr1[incorr1<self.config.num_kpt], incorr2[incorr2<self.config.num_kpt]
         num_corr, num_incorr1, num_incorr2 = len(valid_corr), len(valid_incorr1) ,len(valid_incorr2)
         mask1_invlaid, mask2_invlaid = np.ones(x1.shape[0]).astype(bool), np.ones(x2.shape[0]).astype(bool)
@@ -138,7 +138,7 @@ class Offline_Dataset(data.Dataset):
         x1, x2 = x1[per_idx1][:, :2], x2[per_idx2][:, :2]
         desc1, desc2 = desc1[per_idx1], desc2[per_idx2]
         kpt1, kpt2=kpt1[per_idx1], kpt2[per_idx2]
-
+        #满足标签条件的标准化x1,x2和未标准化(原始的)kpt1,kpt2,图像之间的重叠得分pscore
         return {'x1': x1, 'x2': x2, 'kpt1':kpt1,'kpt2':kpt2,'desc1': desc1, 'desc2': desc2, 'num_corr': num_corr, 'num_incorr1': num_incorr1,'num_incorr2': num_incorr2,'e_gt':egt,\
                 'pscore1':pscore1,'pscore2':pscore2,'img_path1':img_path1,'img_path2':img_path2}
 

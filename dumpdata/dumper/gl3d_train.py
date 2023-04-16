@@ -243,8 +243,8 @@ class gl3d_train(BaseDumper):
                 depth1,depth2=self.load_depth(depth_path1),self.load_depth(depth_path2)
                 corr_index,incorr_index1,incorr_index2=data_utils.make_corr(kpt1[:,:2],kpt2[:,:2],desc1,desc2,depth1,depth2,K1,K2,dR,dt,size1,size2,
                                                                             self.config['corr_th'],self.config['incorr_th'],self.config['check_desc'])
-            
-            if len(corr_index)>self.config['min_corr'] and len(incorr_index1)>self.config['min_incorr'] and len(incorr_index2)>self.config['min_incorr']:
+            #要求标签中正确匹配和错误匹配的个数均要大于设定值
+            if len(corr_index)>self.config['min_corr'] and len(incorr_index1)>self.config['min_incorr'] and len(incorr_index2)>self.config['min_incorr']: 
                 info['corr'].append(corr_index),info['incorr1'].append(incorr_index1),info['incorr2'].append(incorr_index2)
                 info['dR'].append(dR),info['dt'].append(dt),info['K1'].append(K1),info['K2'].append(K2),info['img_path1'].append(img_path1),info['img_path2'].append(img_path2)
                 info['fea_path1'].append(fea_path1),info['fea_path2'].append(fea_path2),info['size1'].append(size1),info['size2'].append(size2)

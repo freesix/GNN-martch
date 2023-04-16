@@ -32,8 +32,8 @@ def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc
     if use_mc: #检查是否有非相互匹配
         mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device=("cuda:{}".format(dist.get_rank())))
         match_score[mask_not_mutual]=-1
-        test1=match_score[match_score==-1]
-        print(sum(test1))
+        # test1=match_score[match_score==-1]
+        # print(sum(test1))
 
     # 非极大值抑制算法
     pos_dismat1=((x1.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x1.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x1@x1.transpose(1,2))).abs_().sqrt_() #abs_()和abs()的区别在于abs_()会在本地创建一个张量，改变张量本身的值
@@ -151,9 +151,10 @@ class Separate_out(nn.Module):
         )
     
     def forward(self, x, separate_num, desc1, desc2, seed_index1, seed_index2, channel):
-        evalu_score=self.conv(x)+self.shot_cut(x) 
-        evalu_score=torch.sigmoid(evalu_score).squeeze(1) #得出得分
+        evalu_score=(self.conv(x)+self.shot_cut(x)).squeeze(1)
+        # evalu_score=torch.sigmoid(evalu_score).squeeze(1) #得出得分
         values, indics = torch.topk(evalu_score,k=separate_num,dim=1)
+        evalu_score=torch.sigmoid(values)
         separate_index1 = seed_index1.gather(dim=-1, index=indics)
         separate_index2 = seed_index2.gather(dim=-1, index=indics)
         # new_desc1 = desc1.gather(dim=-1, index=separate_index1.unsqueeze(1).expand(-1,channel,-1))
@@ -283,6 +284,9 @@ class matcher(nn.Module):
         x1_pos_embedding, x2_pos_embedding =self.position_encoder(encode_x1), self.position_encoder(encode_x2) 
         x1_pos_embedding,x2_pos_embedding=torch.nn.functional.normalize(x1_pos_embedding,dim=-1),torch.nn.functional.normalize(x2_pos_embedding,dim=-1)
         aug_desc1,aug_desc2=desc1_embedding+x1_pos_embedding+desc1, desc2_embedding+x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
+        score=F.cosine_similarity(aug_desc1,aug_desc2,dim=1)
+        # ss=torch.softmax(score,dim=1)
+        print(score[score>0].sum())
 
         seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower,separate1_index_tower,separate2_index_tower=[],[],[],[],[],[],[]
         seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)) #保存每轮次的种子索引
@@ -294,6 +298,7 @@ class matcher(nn.Module):
         for i in range(self.layer_num): # 网络层数
             
             if i in self.seedlayer and i!=0: # 在第6次的时候重播种
+                print("重播种....")
                 seed_para_index+=1
                 aug_desc1,aug_desc2=self.mid_final_project(aug_desc1),self.mid_final_project(aug_desc2) 
                 M=torch.matmul(aug_desc1.transpose(1,2),aug_desc2)
@@ -313,8 +318,12 @@ class matcher(nn.Module):
                 if not test_mode and data['step']<self.detach_iter: #再前detach轮次重播种层中aug_desc不参与梯度更新
                     aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
 
+            # aug_desc1,aug_desc2,seed_weight1,seed_weight2,separate11_index,separate12_index,separate21_index,separate22_index = \
+            #                             self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2,self.seed_top_k[0]-self.layer_num*2,
+            #                                                  self.seed_top_k[0]-(self.layer_num+1) *2 )
             aug_desc1,aug_desc2,seed_weight1,seed_weight2,separate11_index,separate12_index,separate21_index,separate22_index = \
                                         self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2,self.separate_num1,self.separate_num2)
+
             
         seed_weight1_tower.append(seed_weight1),seed_weight2_tower.append(seed_weight2)
         separate1_index_tower.append(torch.stack([separate11_index,separate12_index],dim=-1))
