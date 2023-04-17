@@ -22,7 +22,7 @@ def main(config, model_config):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '5678'
     torch.cuda.set_device(config.local_rank)
-    device = torch.device(f'cuda:{config.local_rank}')
+    device = torch.device(f'cuda:{config.local_rank}') 
     #将模型载入cuda并配置多进程设置
     model.to(device)
 

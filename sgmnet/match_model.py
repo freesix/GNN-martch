@@ -32,8 +32,6 @@ def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc
     if use_mc: #检查是否有非相互匹配
         mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device='cuda')
         match_score[mask_not_mutual]=-1
-        test1=match_score[match_score==-1]
-        print(sum(test1))
 
     # 非极大值抑制算法
     pos_dismat1=((x1.norm(p=2,dim=-1)**2).unsqueeze_(-1)+(x1.norm(p=2,dim=-1)**2).unsqueeze_(-2)-2*(x1@x1.transpose(1,2))).abs_().sqrt_() #abs_()和abs()的区别在于abs_()会在本地创建一个张量，改变张量本身的值
@@ -151,16 +149,17 @@ class Separate_out(nn.Module):
         )
     
     def forward(self, x, separate_num, desc1, desc2, seed_index1, seed_index2, channel):
-        evalu_score=self.conv(x)+self.shot_cut(x) 
-        evalu_score=torch.sigmoid(evalu_score).squeeze(1) #得出得分
-        values, indics = torch.topk(evalu_score,k=separate_num,dim=1,largest=False)
+        evalu_score= (self.conv(x)+self.shot_cut(x)).squeeze(1)
+        # evalu_score=torch.sigmoid(evalu_score).squeeze(1) #得出得分
+        values, indics = torch.topk(evalu_score,k=separate_num,dim=1,largest=True,sorted=False)
+        evalu_score=torch.sigmoid(values) #得出得分
         separate_index1 = seed_index1.gather(dim=-1, index=indics)
         separate_index2 = seed_index2.gather(dim=-1, index=indics)
         # new_desc1 = desc1.gather(dim=-1, index=separate_index1.unsqueeze(1).expand(-1,channel,-1))
         # new_desc2 = desc2.gather(dim=-1, index=separate_index2.unsqueeze(1).expand(-1,channel,-1))
         new_desc1 = desc1.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
         new_desc2 = desc2.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
-        return values,new_desc1,new_desc2,separate_index1,separate_index2
+        return evalu_score,new_desc1,new_desc2,separate_index1,separate_index2
         
         
                 

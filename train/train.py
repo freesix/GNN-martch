@@ -96,7 +96,8 @@ def train(model, train_loader, valid_loader, config,model_config):
             writer.add_scalar('CorrLoss',loss_res['loss_corr'],step)
             writer.add_scalar('InCorrLoss', loss_res['loss_incorr'], step)
             writer.add_scalar('dustbin', model.module.dustbin, step)
-
+            writer.add_scalar('acc_corr', loss_res['acc_corr'], step)
+            writer.add_scalar('acc_incorr', loss_res['acc_incorr'], step)
             if config.model_name=='SGM':
                 writer.add_scalar('Separ1ConfLoss', loss_res['loss_separ1_conf'], step)
                 writer.add_scalar('Separ2ConfLoss', loss_res['loss_separ2_conf'], step)
