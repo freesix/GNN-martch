@@ -127,48 +127,4 @@ class GSNLoss:
                 'pre_separ1_conf':separ1_precision_tower,'recall_separ1_conf':separ1_recall_tower,'loss_separ2_conf':separ2_loss,\
                 'pre_separ2_conf':separ2_precision_tower,'recall_separ2_conf':separ2_recall_tower,'loss_corr_mid':loss_mid_corr_tower,\
                 'loss_incorr_mid':loss_mid_incorr_tower,'mid_acc_corr':acc_mid_tower,'total_loss':total_loss}
-# class SGMLoss:
-#     def __init__(self,config,model_config):
-#         self.config=config
-#         self.model_config=model_config
-
-#     def run(self,data,result):
-#         # p:分配矩阵，
-#         loss_corr,loss_incorr,acc_corr,acc_incorr=CorrLoss(result['p'],data['num_corr'],data['num_incorr1'],data['num_incorr2'])
-#         loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower=[],[],[]
-        
-#         #mid loss
-#         for i in range(len(result['mid_p'])):
-#             mid_p=result['mid_p'][i]
-#             loss_mid_corr,loss_mid_incorr,mid_acc_corr,mid_acc_incorr=CorrLoss(mid_p,data['num_corr'],data['num_incorr1'],data['num_incorr2'])
-#             loss_mid_corr_tower.append(loss_mid_corr),loss_mid_incorr_tower.append(loss_mid_incorr),acc_mid_tower.append(mid_acc_corr)
-#         if len(result['mid_p']) != 0:
-#             loss_mid_corr_tower,loss_mid_incorr_tower, acc_mid_tower = torch.stack(loss_mid_corr_tower), torch.stack(loss_mid_incorr_tower), torch.stack(acc_mid_tower)
-#         else:
-#             loss_mid_corr_tower,loss_mid_incorr_tower, acc_mid_tower= torch.zeros(1).cuda(), torch.zeros(1).cuda(),torch.zeros(1).cuda()
-
-  
-#         #seed confidence loss
-#         classif_loss_tower,classif_precision_tower,classif_recall_tower=[],[],[]
-#         for layer in range(len(result['seed_conf'])):
-#             confidence=result['seed_conf'][layer]
-#             seed_index=result['seed_index'][(np.asarray(self.model_config.seedlayer)<=layer).nonzero()[0][-1]]
-#             seed_x1,seed_x2=data['x1'].gather(dim=1, index=seed_index[:,:,0,None].expand(-1, -1,2)),\
-#                             data['x2'].gather(dim=1, index=seed_index[:,:,1,None].expand(-1, -1,2))
-#             classif_loss,classif_precision,classif_recall=CELoss(seed_x1,seed_x2,data['e_gt'],confidence,self.config.inlier_th)
-#             classif_loss_tower.append(classif_loss), classif_precision_tower.append(classif_precision), classif_recall_tower.append(classif_recall)
-#         classif_loss, classif_precision_tower, classif_recall_tower=torch.stack(classif_loss_tower).mean(),torch.stack(classif_precision_tower), \
-#                                                                     torch.stack(classif_recall_tower)
-       
-            
-#         classif_loss*=self.config.seed_loss_weight
-#         loss_mid_corr_tower*=self.config.mid_loss_weight
-#         loss_mid_incorr_tower*=self.config.mid_loss_weight
-#         total_loss=loss_corr+loss_incorr+classif_loss+loss_mid_corr_tower.sum()+loss_mid_incorr_tower.sum()
-
-#         return {'loss_corr':loss_corr,'loss_incorr':loss_incorr,'acc_corr':acc_corr,'acc_incorr':acc_incorr,'loss_seed_conf':classif_loss,
-#                 'pre_seed_conf':classif_precision_tower,'recall_seed_conf':classif_recall_tower,'loss_corr_mid':loss_mid_corr_tower,
-#                 'loss_incorr_mid':loss_mid_incorr_tower,'mid_acc_corr':acc_mid_tower,'total_loss':total_loss}
-        
-
-     
+    

@@ -153,10 +153,10 @@ class Separate_out(nn.Module):
     def forward(self, x, separate_num, desc1, desc2, seed_index1, seed_index2, channel):
         evalu_score=(self.conv(x)+self.shot_cut(x)).squeeze(1)
         # evalu_score=torch.sigmoid(evalu_score).squeeze(1) #得出得分
-        values, indics = torch.topk(evalu_score,k=separate_num,dim=1)
+        values, indics = torch.topk(evalu_score,k=separate_num,dim=1,sorted=False)
         evalu_score=torch.sigmoid(values)
-        separate_index1 = seed_index1.gather(dim=-1, index=indics)
-        separate_index2 = seed_index2.gather(dim=-1, index=indics)
+        separate_index1 = seed_index1.gater(dim=-1, index=indics)
+        separate_index2 = seed_index2.gaher(dim=-1, index=indics)
         # new_desc1 = desc1.gather(dim=-1, index=separate_index1.unsqueeze(1).expand(-1,channel,-1))
         # new_desc2 = desc2.gather(dim=-1, index=separate_index2.unsqueeze(1).expand(-1,channel,-1))
         new_desc1 = desc1.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
@@ -167,7 +167,7 @@ class Separate_out(nn.Module):
 # def Separate_out(separate_num,desc1, desc2, seed_index1, seed_index2, channel):
 #     out = F.cosine_similarity(desc1,desc2,dim=1)
 #     evalu_score=torch.sigmoid(out).squeeze(1)
-#     values, indices = torch.topk(evalu_score,k=separate_num,dim=1)
+#     values, indices = torch.topk(evalu_score,k=separate_num,dim=1,sorted=False)
 #     separate_index1 = seed_index1.gather(dim=-1, index=indices)
 #     separate_index2 = seed_index2.gather(dim=-1, index=indices)
 #     new_desc1 = desc1.gather(dim=-1,index=indices.unsqueeze(1).expand(-1,channel,-1))
