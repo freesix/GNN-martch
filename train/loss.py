@@ -17,11 +17,13 @@ def batch_episym(x1, x2, F):
     
     # seed_x1,seed_x2对应种子的坐标位置 e：变换矩阵 confidence：分配矩阵
 def CELoss(seed_x1,seed_x2,e,confidence,inlier_th,batch_mask=1):
+    confidence=torch.diagonal(confidence,dim1=1,dim2=2).squeeze(-1)
     #seed_x: b*k*2
     ys=batch_episym(seed_x1,seed_x2,e)#计算种子坐标点之间的匹配程度
     mask_pos,mask_neg=(ys<=inlier_th).float(),(ys>inlier_th).float() #根据预设值将这些种子点匹配分为匹配和不匹配
     num_pos,num_neg=torch.relu(torch.sum(mask_pos, dim=1) - 1.0) + 1.0,torch.relu(torch.sum(mask_neg, dim=1) - 1.0) + 1.0 #计算匹配和不匹配数量
-    loss_pos,loss_neg=-torch.log(abs(confidence) + 2e-7)*mask_pos,-torch.log(abs(1-confidence)+2e-7)*mask_neg
+    loss_pos,loss_neg=-torch.log(abs(confidence) + 2e-7)*mask_pos,\
+                      -torch.log(abs(1-confidence)+2e-7)*mask_neg
     classif_loss = torch.mean(loss_pos * 0.5 / num_pos.unsqueeze(-1) + loss_neg * 0.5 / num_neg.unsqueeze(-1),dim=-1)
     classif_loss =classif_loss*batch_mask
     classif_loss=classif_loss.mean() #整个批次的平均分类损失
@@ -93,24 +95,24 @@ class GSNLoss:
             
         # 析出种子损失
         separ1_loss_tower,separ1_precision_tower,separ1_recall_tower=[],[],[]
-        for layer in range(len(result['separate1_conf'])):
-            confidence=result['separate1_conf'][layer]
-            separate1_index=result['separate1_index'][layer]
-            separate1_x1,separate1_x2=data['x1'].gather(dim=1, index=separate1_index[:,:,0,None].expand(-1,-1,2)),\
-                                      data['x2'].gather(dim=1, index=separate1_index[:,:,1,None].expand(-1,-1,2))
-            separ1_loss,separ1_precision,separ1_recall=CELoss(separate1_x1,separate1_x2,data['e_gt'],confidence,self.config.inlier_th)
+        for layer in range(len(result['seed_weight1_conf'])):
+            confidence=result['seed_weight1_conf'][layer]
+            seed_index=result['seed_index'][(np.asarray(self.model_config.seedlayer)<=layer).nonzero()[0][-1]]
+            x1,x2 = data['x1'].gather(dim=1, index=seed_index[:,:,0,None].expand(-1,-1,2)),\
+                    data['x2'].gather(dim=1, index=seed_index[:,:,1,None].expand(-1,-1,2))
+            separ1_loss,separ1_precision,separ1_recall=CELoss(x1,x2,data['e_gt'],confidence,self.config.inlier_th)
             separ1_loss_tower.append(separ1_loss), separ1_precision_tower.append(separ1_precision), separ1_recall_tower.append(separ1_recall)
         separ1_loss, separ1_precision_tower, separ1_recall_tower = torch.stack(separ1_loss_tower).mean(), torch.stack(separ1_precision_tower), \
                                                                     torch.stack(separ1_recall_tower)
         
 
         separ2_loss_tower,separ2_precision_tower,separ2_recall_tower=[],[],[]
-        for layer in range(len(result['separate2_conf'])):
-            confidence=result['separate2_conf'][layer]
-            separate2_index=result['separate2_index'][layer]
-            separate2_x1,separate2_x2=data['x1'].gather(dim=1, index=separate2_index[:,:,0,None].expand(-1,-1,2)),\
-                                      data['x2'].gather(dim=1, index=separate2_index[:,:,1,None].expand(-1,-1,2))
-            separ2_loss,separ2_precision,separ2_recall=CELoss(separate2_x1,separate2_x2,data['e_gt'],confidence,self.config.inlier_th)
+        for layer in range(len(result['seed_weight2_conf'])):
+            confidence=result['seed_weight2_conf'][layer]
+            seed_index=result['seed_index'][(np.asarray(self.model_config.seedlayer)<=layer).nonzero()[0][-1]]
+            x1,x2 = data['x1'].gather(dim=1, index=seed_index[:,:,0,None].expand(-1,-1,2)),\
+                    data['x2'].gather(dim=1, index=seed_index[:,:,1,None].expand(-1,-1,2))
+            separ2_loss,separ2_precision,separ2_recall=CELoss(x1,x2,data['e_gt'],confidence,self.config.inlier_th)
             separ2_loss_tower.append(separ2_loss), separ2_precision_tower.append(separ2_precision), separ2_recall_tower.append(separ2_recall)
         separ2_loss, separ2_precision_tower, separ2_recall_tower = torch.stack(separ2_loss_tower).mean(), torch.stack(separ2_precision_tower), \
                                                                     torch.stack(separ2_recall_tower)
