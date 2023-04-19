@@ -1,7 +1,7 @@
 seed_top_k: [144,144] #种子数量
 seed_radius_coe: 0.01 #NMS半径超参数
 net_channels: 128 #网络特征维度
-layer_num: 2
+layer_num: 1
 head: 4
 seedlayer: [0]
 use_mc_seeding: True
