@@ -24,7 +24,6 @@ def valid(valid_loader, model,match_loss, config,model_config):
     #                              torch.zeros(model_config.layer_num ,device='cuda')
     total_acc_mid=torch.zeros(len(model_config.seedlayer)-1,device=("cuda:{}".format(dist.get_rank())))
 
-
     with torch.no_grad():#梯度清零
         if is_main_process():
             loader_iter=tqdm(loader_iter)
@@ -35,17 +34,16 @@ def valid(valid_loader, model,match_loss, config,model_config):
             res= model(test_data)
             loss_res=match_loss.run(test_data,res)
             dist.barrier()
-           
+            
             total_acc_corr+=loss_res['acc_corr']
             total_acc_incorr+=loss_res['acc_incorr']
             total_loss+=loss_res['total_loss']
-
+            
             if config.model_name=='SGM':
                 total_acc_mid+=loss_res['mid_acc_corr']
                 # total_precision,total_recall=total_precision+loss_res['pre_seed_conf'],total_recall+loss_res['recall_seed_conf']
                 separ1_precision,separ1_recall=separ1_precision+loss_res['pre_separ1_conf'], separ1_recall+loss_res['recall_separ1_conf']
                 separ2_precision,separ2_recall=separ2_precision+loss_res['pre_separ2_conf'], separ2_recall+loss_res['recall_separ2_conf']
-                
         total_acc_corr/=num_pair
         total_acc_incorr /= num_pair
         separ1_precision/=num_pair
@@ -56,7 +54,7 @@ def valid(valid_loader, model,match_loss, config,model_config):
         total_precision=separ1_precision+separ2_precision
         total_recall=separ1_recall+separ2_recall
 
-        #apply tensor reduction
+  
         total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision,total_recall,total_acc_mid\
             =train_utils.reduce_tensor(total_loss,'sum'), train_utils.reduce_tensor(total_acc_corr,'mean'),train_utils.reduce_tensor(total_acc_incorr,'mean'),\
             train_utils.reduce_tensor(separ1_precision,'mean'),train_utils.reduce_tensor(separ1_recall,'mean'),train_utils.reduce_tensor(separ2_precision,'mean'),\
