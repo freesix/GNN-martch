@@ -93,7 +93,7 @@ class GSNLoss:
             loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),\
                 torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank())))
             
-        # 析出种子损失
+        # 权重转移损失
         separ1_loss_tower,separ1_precision_tower,separ1_recall_tower=[],[],[]
         for layer in range(len(result['seed_weight1_conf'])):
             confidence=result['seed_weight1_conf'][layer]
@@ -117,16 +117,37 @@ class GSNLoss:
         separ2_loss, separ2_precision_tower, separ2_recall_tower = torch.stack(separ2_loss_tower).mean(), torch.stack(separ2_precision_tower), \
                                                                     torch.stack(separ2_recall_tower)
 
+        #非正确匹配损失
+        loss_nomatch1_tower=[]
+        for i in range(len(result['seed_weight1_conf'])):
+            confidence=result['seed_weight1_conf'][layer]
+            mask=torch.eye(confidence.shape[1]).unsqueeze(0).expand(confidence.shape[0],-1,-1).cuda(device=("cuda:{}".format(dist.get_rank())))
+            loss_nomatch=(confidence*mask).sum()/confidence.shape[1]
+            loss_nomatch1_tower.append(loss_nomatch)
+        loss_nomatch1=torch.stack(loss_nomatch1_tower).mean()
 
+        loss_nomatch2_tower=[]
+        for i in range(len(result['seed_weight2_conf'])):
+            confidence=result['seed_weight2_conf'][layer]
+            mask=torch.eye(confidence.shape[1]).unsqueeze(0).expand(confidence.shape[0],-1,-1).cuda(device=("cuda:{}".format(dist.get_rank())))
+            loss_nomatch=(confidence*mask).sum()/confidence.shape[1]
+            loss_nomatch2_tower.append(loss_nomatch)
+        loss_nomatch2=torch.stack(loss_nomatch2_tower).mean()
+
+
+        
 
         separ1_loss *=self.config.seed_loss_weight #这里要修改
         separ2_loss *=self.config.seed_loss_weight
         loss_mid_corr_tower *=self.config.mid_loss_weight
         loss_mid_incorr_tower *=self.config.mid_loss_weight
-        total_loss=loss_corr+loss_incorr+separ1_loss+separ2_loss+loss_mid_corr_tower.sum()+loss_mid_incorr_tower.sum()
+        loss_nomatch1 *=self.config.nomatch_loss_weight
+        loss_nomatch2 *=self.config.nomatch_loss_weight
+        total_loss=loss_corr+loss_incorr+separ1_loss+separ2_loss+loss_mid_corr_tower.sum()+loss_mid_incorr_tower.sum()+loss_nomatch1+loss_nomatch2
 
         return {'loss_corr':loss_corr,'loss_incorr':loss_incorr,'acc_corr':acc_corr,'acc_incorr':acc_incorr,'loss_separ1_conf':separ1_loss,\
                 'pre_separ1_conf':separ1_precision_tower,'recall_separ1_conf':separ1_recall_tower,'loss_separ2_conf':separ2_loss,\
                 'pre_separ2_conf':separ2_precision_tower,'recall_separ2_conf':separ2_recall_tower,'loss_corr_mid':loss_mid_corr_tower,\
-                'loss_incorr_mid':loss_mid_incorr_tower,'mid_acc_corr':acc_mid_tower,'total_loss':total_loss}
+                'loss_incorr_mid':loss_mid_incorr_tower,'mid_acc_corr':acc_mid_tower,'total_loss':total_loss, \
+                    'loss_nomatch1':loss_nomatch1, 'loss_nomatch2':loss_nomatch2}
     

@@ -34,7 +34,7 @@ def valid(valid_loader, model,match_loss, config,model_config):
             test_data = train_utils.tocuda(test_data)
             res= model(test_data)
             loss_res=match_loss.run(test_data,res)
-            dist.barrier()
+            dist.barrier() #同步
            
             total_acc_corr+=loss_res['acc_corr']
             total_acc_incorr+=loss_res['acc_incorr']

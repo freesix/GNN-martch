@@ -116,6 +116,8 @@ def train(model, train_loader, valid_loader, config,model_config, train_sampler)
             if config.model_name=='SGM':
                 writer.add_scalar('Separ1ConfLoss', loss_res['loss_separ1_conf'], step)
                 writer.add_scalar('Separ2ConfLoss', loss_res['loss_separ2_conf'], step)
+                writer.add_scalar('loss_nomatch1', loss_res['loss_nomatch1'], step)
+                writer.add_scalar('loss_nomatch2', loss_res['loss_nomatch2'], step)
                 writer.add_scalar('MidCorrLoss', loss_res['loss_corr_mid'].sum(), step)
                 writer.add_scalar('MidInCorrLoss', loss_res['loss_incorr_mid'].sum(), step)
             
