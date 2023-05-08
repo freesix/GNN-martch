@@ -258,8 +258,8 @@ class matcher(nn.Module):
         self.seedlayer=config.seedlayer # 种子层数
         self.layer_num=config.layer_num #网络层数
         self.sink_iter=config.sink_iter #sinkhorn算法迭代次数
-        self.domain_topk=config.domain_topk #邻域聚合数量
-        self.domain_radiues=config.domain_radiues
+        # self.domain_topk=config.domain_topk #邻域聚合数量
+        # self.domain_radiues=config.domain_radiues
         # self.separate_num1=config.separate_num
 
         # 坐标位置编码 
@@ -297,25 +297,30 @@ class matcher(nn.Module):
         inverse_ratio_score,nn_index1=values[:,:,1]/values[:,:,0],nn_index[:,:,0]#get inverse score
    
         #initial seeding
-        seed_index1,seed_index2,pos_dismat1,pos_dismat2=seeding(nn_index1,nn_index2,x1,x2,self.seed_top_k[0],inverse_ratio_score,self.conf_bar[0],\
+        seed_index1,seed_index2,_,_=seeding(nn_index1,nn_index2,x1,x2,self.seed_top_k[0],inverse_ratio_score,self.conf_bar[0],\
                                 self.seed_radius_coe,test=test_mode) 
+        # seed_index1,seed_index2,pos_dismat1,pos_dismat2=seeding(nn_index1,nn_index2,x1,x2,self.seed_top_k[0],inverse_ratio_score,self.conf_bar[0],\
+        #                         self.seed_radius_coe,test=test_mode) 
+
 
  
         # 位置编码
         desc1,desc2=desc1.transpose(1,2), desc2.transpose(1,2) #交换channel和feature of number，遵循torch默认channel在前
         #获取领域的描述子们
-        domain_desc1,domain_desc2=domain(pos_dismat1,pos_dismat2,self.domain_topk,self.domain_radiues,desc1,desc2)
+        # domain_desc1,domain_desc2=domain(pos_dismat1,pos_dismat2,self.domain_topk,self.domain_radiues,desc1,desc2)
         #领域聚合
-        desc1_embedding, desc2_embedding=self.domain_encoder(domain_desc1), self.domain_encoder(domain_desc2)
-        desc1_embedding, desc2_embedding=torch.nn.functional.normalize(desc1_embedding,dim=-1),torch.nn.functional.normalize(desc2_embedding,dim=-1)
+        # desc1_embedding, desc2_embedding=self.domain_encoder(domain_desc1), self.domain_encoder(domain_desc2)
+        # desc1_embedding, desc2_embedding=torch.nn.functional.normalize(desc1_embedding,dim=-1),torch.nn.functional.normalize(desc2_embedding,dim=-1)
         
         if not self.use_score_encoding:
             encode_x1,encode_x2 = encode_x1[:,:,:2], encode_x2[:,:,:2]
         encode_x1,encode_x2 = encode_x1.transpose(1,2), encode_x2.transpose(1,2)
         
         x1_pos_embedding, x2_pos_embedding =self.position_encoder(encode_x1), self.position_encoder(encode_x2) 
-        x1_pos_embedding,x2_pos_embedding=torch.nn.functional.normalize(x1_pos_embedding,dim=-1),torch.nn.functional.normalize(x2_pos_embedding,dim=-1)
-        aug_desc1,aug_desc2=desc1_embedding+x1_pos_embedding+desc1, desc2_embedding+x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
+        # x1_pos_embedding,x2_pos_embedding=torch.nn.functional.normalize(x1_pos_embedding,dim=-1),torch.nn.functional.normalize(x2_pos_embedding,dim=-1)
+        aug_desc1,aug_desc2=x1_pos_embedding+desc1, x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
+        # aug_desc1,aug_desc2=desc1_embedding+x1_pos_embedding+desc1, desc2_embedding+x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
+
 
         seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower,separate1_index_tower,separate2_index_tower=[],[],[],[],[],[],[]
         seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)) #保存每轮次的种子索引

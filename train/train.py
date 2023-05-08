@@ -110,7 +110,7 @@ def train(model, train_loader, valid_loader, config,model_config, train_sampler)
             writer.add_scalar('dustbin', model.module.dustbin, step)
             writer.add_scalar('acc_corr',loss_res['acc_corr'], step)
             writer.add_scalar('acc_incorr',loss_res['acc_incorr'], step)
-            writer.add_scalar('acc_mid_corr',loss_res['mid_acc_corr'], step)
+            # writer.add_scalar('acc_mid_corr',loss_res['mid_acc_corr'], step)
 
          
             if config.model_name=='SGM':
@@ -118,19 +118,25 @@ def train(model, train_loader, valid_loader, config,model_config, train_sampler)
                 writer.add_scalar('Separ2ConfLoss', loss_res['loss_separ2_conf'], step)
                 writer.add_scalar('loss_nomatch1', loss_res['loss_nomatch1'], step)
                 writer.add_scalar('loss_nomatch2', loss_res['loss_nomatch2'], step)
-                writer.add_scalar('MidCorrLoss', loss_res['loss_corr_mid'].sum(), step)
-                writer.add_scalar('MidInCorrLoss', loss_res['loss_incorr_mid'].sum(), step)
+                # writer.add_scalar('MidCorrLoss', loss_res['loss_corr_mid'].sum(), step)
+                # writer.add_scalar('MidInCorrLoss', loss_res['loss_incorr_mid'].sum(), step)
             
 
         # valid ans save
         b_save = ((step + 1) % config.save_intv) == 0
         b_validate = ((step + 1) % config.val_intv) == 0
         if b_validate:
-            total_loss,acc_corr,acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision_tower,total_recall_tower,acc_mid=\
-                valid(valid_loader, model, match_loss, config,model_config)
+            total_loss,acc_corr,acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision_tower,\
+                total_recall_tower,weight1,weight2=valid(valid_loader, model, match_loss, config,model_config)
+            # total_loss,acc_corr,acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision_tower,\
+            #     total_recall_tower,acc_mid,weight1,weight2=valid(valid_loader, model, match_loss, config,model_config)
+
             if is_main_process():
                 writer.add_scalar('ValidAcc', acc_corr, step)
                 writer.add_scalar('ValidLoss', total_loss, step)
+                writer.add_image('weight1',weight1*255,step)
+                writer.add_image('weight2',weight2*255,step)
+                    
                 
                 if config.model_name=='SGM':
                     for i in range(len(separ1_recall)):
@@ -138,11 +144,15 @@ def train(model, train_loader, valid_loader, config,model_config, train_sampler)
                         writer.add_scalar('separ1_conf_recall_%d' % i, separ1_recall[i], step)
                         writer.add_scalar('separ2_conf_pre_%d'%i,separ2_precision[i],step)
                         writer.add_scalar('separ2_conf_recall_%d'%i, separ2_recall[i], step)
-                    for i in range(len(acc_mid)):
-                        writer.add_scalar('acc_mid%d'%i,acc_mid[i],step)
+                    # for i in range(len(acc_mid)):
+                    #     writer.add_scalar('acc_mid%d'%i,acc_mid[i],step)
                     print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data,'separ1_conf_pre: ',separ1_precision.mean().data,'separ1_conf_recall: ',\
                           separ1_recall.mean().data,'separ2_conf_per: ',separ2_precision.mean().data,'separ2_conf_recall: ',separ2_recall.mean().data,\
-                          'total_conf_pre: ',total_precision_tower.mean().data,'total_conf_recall: ',total_recall_tower.mean().data,'acc_mid: ',acc_mid.mean().data)
+                          'total_conf_pre: ',total_precision_tower.mean().data,'total_conf_recall: ',total_recall_tower.mean().data)
+                    # print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data,'separ1_conf_pre: ',separ1_precision.mean().data,'separ1_conf_recall: ',\
+                    #       separ1_recall.mean().data,'separ2_conf_per: ',separ2_precision.mean().data,'separ2_conf_recall: ',separ2_recall.mean().data,\
+                    #       'total_conf_pre: ',total_precision_tower.mean().data,'total_conf_recall: ',total_recall_tower.mean().data,'acc_mid: ',acc_mid.mean().data)
+
                 else:
                      print('acc_corr: ',acc_corr.data,'acc_incorr: ',acc_incorr.data)
                 

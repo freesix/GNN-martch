@@ -22,8 +22,8 @@ def valid(valid_loader, model,match_loss, config,model_config):
     separ2_precision,separ2_recall=torch.zeros(1,device=("cuda:{}".format(dist.get_rank()))),torch.zeros(1,device=("cuda:{}".format(dist.get_rank())))
     # total_precision,total_recall=torch.zeros(model_config.layer_num ,device='cuda'),\
     #                              torch.zeros(model_config.layer_num ,device='cuda')
-    total_acc_mid=torch.zeros(len(model_config.seedlayer)-1,device=("cuda:{}".format(dist.get_rank())))
-
+    # total_acc_mid=torch.zeros(len(model_config.seedlayer)-1,device=("cuda:{}".format(dist.get_rank())))
+    weight1,weight2=[],[]
 
     with torch.no_grad():#梯度清零
         if is_main_process():
@@ -35,35 +35,40 @@ def valid(valid_loader, model,match_loss, config,model_config):
             res= model(test_data)
             loss_res=match_loss.run(test_data,res)
             dist.barrier() #同步
-           
+            weight1=res['seed_weight1_conf'][0]
+            weight2=res['seed_weight2_conf'][0]
             total_acc_corr+=loss_res['acc_corr']
             total_acc_incorr+=loss_res['acc_incorr']
             total_loss+=loss_res['total_loss']
 
             if config.model_name=='SGM':
-                total_acc_mid+=loss_res['mid_acc_corr']
+                # total_acc_mid+=loss_res['mid_acc_corr']
                 # total_precision,total_recall=total_precision+loss_res['pre_seed_conf'],total_recall+loss_res['recall_seed_conf']
                 separ1_precision,separ1_recall=separ1_precision+loss_res['pre_separ1_conf'], separ1_recall+loss_res['recall_separ1_conf']
                 separ2_precision,separ2_recall=separ2_precision+loss_res['pre_separ2_conf'], separ2_recall+loss_res['recall_separ2_conf']
-                
+        
         total_acc_corr/=num_pair
         total_acc_incorr /= num_pair
         separ1_precision/=num_pair
         separ1_recall/=num_pair
         separ2_precision/=num_pair
         separ2_recall/=num_pair
-        total_acc_mid/=num_pair
+        # total_acc_mid/=num_pair
         total_precision=separ1_precision+separ2_precision
         total_recall=separ1_recall+separ2_recall
 
         #apply tensor reduction
-        total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision,total_recall,total_acc_mid\
+        total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision,total_recall\
             =train_utils.reduce_tensor(total_loss,'sum'), train_utils.reduce_tensor(total_acc_corr,'mean'),train_utils.reduce_tensor(total_acc_incorr,'mean'),\
             train_utils.reduce_tensor(separ1_precision,'mean'),train_utils.reduce_tensor(separ1_recall,'mean'),train_utils.reduce_tensor(separ2_precision,'mean'),\
-            train_utils.reduce_tensor(separ2_recall,'mean'),train_utils.reduce_tensor(total_precision,'mean'),train_utils.reduce_tensor(total_recall,'mean'),\
-            train_utils.reduce_tensor(total_acc_mid,'mean')
-    model.train()#启用batchNormalization和Dropout
-    return total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,total_precision,total_recall,total_acc_mid
+            train_utils.reduce_tensor(separ2_recall,'mean'),train_utils.reduce_tensor(total_precision,'mean'),train_utils.reduce_tensor(total_recall,'mean')
+        weight1,weight2=train_utils.reduce_tensor(weight1,'mean'), train_utils.reduce_tensor(weight2,'mean')
+    model.train()#启用batchNormalization和Drout
+    # return total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,\
+    #     total_precision,total_recall,total_acc_mid,weight1,weight2
+    return total_loss,total_acc_corr,total_acc_incorr,separ1_precision,separ1_recall,separ2_precision,separ2_recall,\
+        total_precision,total_recall,weight1,weight2
+
 
 
 

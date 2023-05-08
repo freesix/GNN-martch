@@ -81,17 +81,17 @@ class GSNLoss:
     def run(self,data,result):
         #最后分配矩阵的损失
         loss_corr,loss_incorr,acc_corr,acc_incorr=CorrLoss(result['p'],data['num_corr'],data['num_incorr1'],data['num_incorr2'])
-        loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower=[],[],[] #用于保存重播种(中间求取分配矩阵的损失)
-        # 计算中间层分配矩阵的损失
-        for i in range(len(result['mid_p'])):
-            mid_p=result['mid_p'][i]
-            loss_mid_corr,loss_mid_incorr,mid_acc_corr,mid_acc_incorr=CorrLoss(mid_p,data['num_corr'],data['num_incorr1'],data['num_incorr2'])
-            loss_mid_corr_tower.append(loss_mid_corr),loss_mid_incorr_tower.append(loss_mid_incorr),acc_mid_tower.append(mid_acc_corr)
-        if len(result['mid_p'])!=0:
-            loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.stack(loss_mid_incorr_tower),torch.stack(loss_mid_incorr_tower),torch.stack(acc_mid_tower)
-        else: #如果没有中间计算分配矩阵(重新播种)这些值赋为零
-            loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),\
-                torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank())))
+        # loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower=[],[],[] #用于保存重播种(中间求取分配矩阵的损失)
+        # # 计算中间层分配矩阵的损失
+        # for i in range(len(result['mid_p'])):
+        #     mid_p=result['mid_p'][i]
+        #     loss_mid_corr,loss_mid_incorr,mid_acc_corr,mid_acc_incorr=CorrLoss(mid_p,data['num_corr'],data['num_incorr1'],data['num_incorr2'])
+        #     loss_mid_corr_tower.append(loss_mid_corr),loss_mid_incorr_tower.append(loss_mid_incorr),acc_mid_tower.append(mid_acc_corr)
+        # if len(result['mid_p'])!=0:
+        #     loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.stack(loss_mid_incorr_tower),torch.stack(loss_mid_incorr_tower),torch.stack(acc_mid_tower)
+        # else: #如果没有中间计算分配矩阵(重新播种)这些值赋为零
+        #     loss_mid_corr_tower,loss_mid_incorr_tower,acc_mid_tower = torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),\
+        #         torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank()))),torch.zeros(1).cuda(("cuda:{}".format(dist.get_rank())))
             
         # 权重转移损失
         separ1_loss_tower,separ1_precision_tower,separ1_recall_tower=[],[],[]
@@ -139,15 +139,16 @@ class GSNLoss:
 
         separ1_loss *=self.config.seed_loss_weight #这里要修改
         separ2_loss *=self.config.seed_loss_weight
-        loss_mid_corr_tower *=self.config.mid_loss_weight
-        loss_mid_incorr_tower *=self.config.mid_loss_weight
+        # loss_mid_corr_tower *=self.config.mid_loss_weight
+        # loss_mid_incorr_tower *=self.config.mid_loss_weight
         loss_nomatch1 *=self.config.nomatch_loss_weight
         loss_nomatch2 *=self.config.nomatch_loss_weight
-        total_loss=loss_corr+loss_incorr+separ1_loss+separ2_loss+loss_mid_corr_tower.sum()+loss_mid_incorr_tower.sum()+loss_nomatch1+loss_nomatch2
+        total_loss=loss_corr+loss_incorr+separ1_loss+separ2_loss+loss_nomatch1+loss_nomatch2
+        # total_loss=loss_corr+loss_incorr+separ1_loss+separ2_loss+loss_mid_corr_tower.sum()+loss_mid_incorr_tower.sum()+loss_nomatch1+loss_nomatch2
+
 
         return {'loss_corr':loss_corr,'loss_incorr':loss_incorr,'acc_corr':acc_corr,'acc_incorr':acc_incorr,'loss_separ1_conf':separ1_loss,\
                 'pre_separ1_conf':separ1_precision_tower,'recall_separ1_conf':separ1_recall_tower,'loss_separ2_conf':separ2_loss,\
-                'pre_separ2_conf':separ2_precision_tower,'recall_separ2_conf':separ2_recall_tower,'loss_corr_mid':loss_mid_corr_tower,\
-                'loss_incorr_mid':loss_mid_incorr_tower,'mid_acc_corr':acc_mid_tower,'total_loss':total_loss, \
+                'pre_separ2_conf':separ2_precision_tower,'recall_separ2_conf':separ2_recall_tower,'total_loss':total_loss, \
                     'loss_nomatch1':loss_nomatch1, 'loss_nomatch2':loss_nomatch2}
     
