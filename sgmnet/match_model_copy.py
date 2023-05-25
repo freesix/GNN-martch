@@ -17,10 +17,10 @@ def sinkhorn(M,r,c,iteration):
 def sink_algorithm(M,dustbin,iteration):
     M = torch.cat([M, dustbin.expand([M.shape[0], M.shape[1], 1])], dim=-1)
     M = torch.cat([M, dustbin.expand([M.shape[0], 1, M.shape[2]])], dim=-2)
-    r = torch.ones([M.shape[0], M.shape[1] - 1],device=("cuda:{}".format(dist.get_rank())))
-    r = torch.cat([r, torch.ones([M.shape[0], 1],device=("cuda:{}".format(dist.get_rank()))) * M.shape[1]], dim=-1)
-    c = torch.ones([M.shape[0], M.shape[2] - 1],device=("cuda:{}".format(dist.get_rank())))
-    c = torch.cat([c, torch.ones([M.shape[0], 1],device=("cuda:{}".format(dist.get_rank()))) * M.shape[2]], dim=-1)
+    r = torch.ones([M.shape[0], M.shape[1] - 1],device=("cuda"))
+    r = torch.cat([r, torch.ones([M.shape[0], 1],device=("cuda")) * M.shape[1]], dim=-1)
+    c = torch.ones([M.shape[0], M.shape[2] - 1],device=("cuda"))
+    c = torch.cat([c, torch.ones([M.shape[0], 1],device=("cuda")) * M.shape[2]], dim=-1)
     
 
     p=sinkhorn(M,r,c,iteration)
@@ -30,7 +30,7 @@ def sink_algorithm(M,dustbin,iteration):
 def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc=True,test=False):
 
     if use_mc: #检查是否有非相互匹配
-        mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device=("cuda:{}".format(dist.get_rank())))
+        mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device=("cuda"))
         match_score[mask_not_mutual]=-1
         # test1=match_score[match_score==-1]
         # print(sum(test1))
@@ -70,12 +70,12 @@ def domain(pos_dismat1,pos_dismat2,domain_topk,domain_radiues,desc1,desc2):
     indices1[values1>dis1_radiues]=indices1_nearest[values1>dis1_radiues]
     indices2[values2>dis2_radiues]=indices2_nearest[values2>dis2_radiues]
 
-    desc1_domain=torch.tensor([],device=("cuda:{}".format(dist.get_rank())))
+    desc1_domain=torch.tensor([],device=("cuda"))
     for i in range(indices1.shape[-1]):
         domain_desc1=desc1.gather(dim=-1, index=indices1[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
         domain_desc1=domain_desc1.unsqueeze(-1)
         desc1_domain=torch.cat([desc1_domain,domain_desc1],dim=-1)
-    desc2_domain=torch.tensor([],device=("cuda:{}".format(dist.get_rank())))
+    desc2_domain=torch.tensor([],device=("cuda"))
     for i in range(indices1.shape[-1]):
         domain_desc2=desc2.gather(dim=-1, index=indices2[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
         domain_desc2=domain_desc2.unsqueeze(-1)
@@ -91,7 +91,7 @@ class domain_attention(nn.Module):
         self.query_filter,self.key_filter,self.value_filter=nn.Conv2d(channel,channel,kernel_size=(1,1)),nn.Conv2d(channel,channel,kernel_size=(1,1)),\
                                                             nn.Conv2d(channel,channel,kernel_size=(1,1))
         self.nh_filter=nn.Conv2d(channel,channel,kernel_size=(1,1))
-        self.cat_filter=nn.Sequential(nn.Conv2d(2*channel,2*channel,kernel_size=(1,1)), nn.SyncBatchNorm(2*channel), nn.ReLU(),
+        self.cat_filter=nn.Sequential(nn.Conv2d(2*channel,2*channel,kernel_size=(1,1)), nn.BatchNorm2d(2*channel), nn.ReLU(),
                                       nn.Conv2d(2*channel,channel,kernel_size=(1,1)))
 
     def forward(self,desc,weight_v=None):
@@ -112,11 +112,11 @@ class Separate_out_2(nn.Module):
         self.shot_cut = nn.Conv2d(channels, out_channels ,kernel_size=(1,1))
         self.conv = nn.Sequential(
             nn.InstanceNorm2d(channels,eps=1e-3),
-            nn.SyncBatchNorm(channels),
+            nn.BatchNorm2d(channels),
             nn.ReLU(),
             nn.Conv2d(channels,channels,kernel_size=(1,1)),
             nn.InstanceNorm2d(channels,eps=1e-3),
-            nn.SyncBatchNorm(channels),
+            nn.BatchNorm2d(channels),
             nn.ReLU(),
             nn.Conv2d(channels,out_channels,kernel_size=(1,1)) 
         )
@@ -131,11 +131,11 @@ class Separate_out(nn.Module):
         self.shot_cut = nn.Conv1d(channels, out_channels, kernel_size=1)
         self.conv = nn.Sequential(
             nn.InstanceNorm1d(channels, eps=1e-3),
-            nn.SyncBatchNorm(channels), #分布式计算上的批标准化层
+            nn.BatchNorm1d(channels), #分布式计算上的批标准化层
             nn.ReLU(),
             nn.Conv1d(channels, channels, kernel_size=1),
             nn.InstanceNorm1d(channels, eps=1e-3),
-            nn.SyncBatchNorm(channels),
+            nn.BatchNorm1d(channels),
             nn.ReLU(),
             nn.Conv1d(channels, out_channels, kernel_size=1)
         )
@@ -164,7 +164,7 @@ class attention_propagantion(nn.Module):
         self.query_filter,self.key_filter,self.value_filter=nn.Conv1d(channel,channel,kernel_size=1),nn.Conv1d(channel,channel,kernel_size=1),\
                                                             nn.Conv1d(channel,channel,kernel_size=1)
         self.mh_filter=nn.Conv1d(channel,channel,kernel_size=1)
-        self.cat_filter=nn.Sequential(nn.Conv1d(2*channel,2*channel, kernel_size=1), nn.SyncBatchNorm(2*channel), nn.ReLU(),
+        self.cat_filter=nn.Sequential(nn.Conv1d(2*channel,2*channel, kernel_size=1), nn.BatchNorm1d(2*channel), nn.ReLU(),
                                       nn.Conv1d(2*channel, channel, kernel_size=1))
 
     def forward(self,desc1,desc2,weight_v=None):
@@ -189,7 +189,7 @@ class attention_learn(nn.Module):
         self.query_filter,self.key_filter,self.value_filter=nn.Conv1d(channel,channel,kernel_size=1),nn.Conv1d(channel,channel,kernel_size=1), \
                                                             nn.Conv1d(channel,channel,kernel_size=1)
         self.mh_filter=nn.Conv1d(channel,channel,kernel_size=1)
-        self.cat_filter=nn.Sequential(nn.Conv1d(2*channel,2*channel,kernel_size=1), nn.SyncBatchNorm(2*channel), nn.ReLU(), 
+        self.cat_filter=nn.Sequential(nn.Conv1d(2*channel,2*channel,kernel_size=1), nn.BatchNorm1d(2*channel), nn.ReLU(), 
                                       nn.Conv1d(2*channel, channel, kernel_size=1))
         self.separate=Separate_out_2(2*channel,1)
         
@@ -216,7 +216,7 @@ class hybrid_block(nn.Module):
         self.head = head
         self.channel = channel
         self.attention_block_down = attention_propagantion(channel, head)
-        self.cluster_filter = nn.Sequential(nn.Conv1d(2*channel,2*channel, kernel_size=1), nn.SyncBatchNorm(2*channel), nn.ReLU(),
+        self.cluster_filter = nn.Sequential(nn.Conv1d(2*channel,2*channel, kernel_size=1), nn.BatchNorm1d(2*channel), nn.ReLU(),
                                             nn.Conv1d(2*channel,2*channel, kernel_size=1))
         self.cross_filter=attention_propagantion(channel, head)
         self.attention_block_self=attention_propagantion(channel,head)
@@ -250,39 +250,52 @@ class hybrid_block(nn.Module):
         
 
 class matcher(nn.Module):
-    def __init__(self,config):
+    def __init__(self):
         nn.Module.__init__(self)
-        self.seed_top_k=config.seed_top_k #topK的数量
-        self.conf_bar=config.conf_bar #[1, 0.1]置信区间
-        self.seed_radius_coe=config.seed_radius_coe #NMS半径超参数
-        self.use_score_encoding=config.use_score_encoding #
-        self.detach_iter=config.detach_iter #分离的迭代次数
-        self.seedlayer=config.seedlayer # 种子层数
-        self.layer_num=config.layer_num #网络层数
-        self.sink_iter=config.sink_iter #sinkhorn算法迭代次数
-        self.domain_topk=config.domain_topk #邻域聚合数量
-        self.domain_radiues=config.domain_radiues  #邻域聚合半径
+        self.seed_top_k=[128,128] #topK的数量
+        self.conf_bar=[1,0.1] #[1, 0.1]置信区间
+        self.seed_radius_coe=0.01 #NMS半径超参数
+        self.use_score_encoding=False#
+        self.detach_iter=140000 #分离的迭代次数
+        self.seedlayer=[0] # 种子层数
+        self.layer_num=1 #网络层数
+        self.sink_iter=[10,100] #sinkhorn算法迭代次数
+        self.domain_topk=10 #邻域聚合数量
+        self.domain_radiues=0.01  #邻域聚合半径
+        self.net_channels=128
+        self.head=4
+        # self.seed_top_k=config.seed_top_k #topK的数量
+        # self.conf_bar=config.conf_bar #[1, 0.1]置信区间
+        # self.seed_radius_coe=config.seed_radius_coe #NMS半径超参数
+        # self.use_score_encoding=config.use_score_encoding #
+        # self.detach_iter=config.detach_iter #分离的迭代次数
+        # self.seedlayer=config.seedlayer # 种子层数
+        # self.layer_num=config.layer_num #网络层数
+        # self.sink_iter=config.sink_iter #sinkhorn算法迭代次数
+        # self.domain_topk=config.domain_topk #邻域聚合数量
+        # self.domain_radiues=config.domain_radiues  #邻域聚合半径
+
         # self.separate_num1=config.separate_num
 
         # 坐标位置编码 
-        self.position_encoder = nn.Sequential(nn.Conv1d(3, 32, kernel_size=1) if config.use_score_encoding else nn.Conv1d(2, 32, kernel_size=1),
-                                              nn.SyncBatchNorm(32),nn.ReLU(),
-                                              nn.Conv1d(32, 64, kernel_size=1), nn.SyncBatchNorm(64), nn.ReLU(),
-                                              nn.Conv1d(64, 128, kernel_size=1), nn.SyncBatchNorm(128), nn.ReLU(),
-                                              nn.Conv1d(128, 256, kernel_size=1), nn.SyncBatchNorm(256), nn.ReLU(),
-                                              nn.Conv1d(256, config.net_channels, kernel_size=1))
+        self.position_encoder = nn.Sequential(nn.Conv1d(3, 32, kernel_size=1) if self.use_score_encoding else nn.Conv1d(2, 32, kernel_size=1),
+                                              nn.BatchNorm1d(32),nn.ReLU(),
+                                              nn.Conv1d(32, 64, kernel_size=1), nn.BatchNorm1d(64), nn.ReLU(),
+                                              nn.Conv1d(64, 128, kernel_size=1), nn.BatchNorm1d(128), nn.ReLU(),
+                                              nn.Conv1d(128, 256, kernel_size=1), nn.BatchNorm1d(256), nn.ReLU(),
+                                              nn.Conv1d(256, self.net_channels, kernel_size=1))
         
         # 领域聚合
-        self.domain_encoder=domain_attention(config.net_channels)
+        self.domain_encoder=domain_attention(self.net_channels)
         
-        self.hybrid_block=nn.Sequential(*[hybrid_block(config.net_channels, config.head) for _ in range(config.layer_num)])
-        self.final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
+        self.hybrid_block=nn.Sequential(*[hybrid_block(self.net_channels, self.head) for _ in range(self.layer_num)])
+        self.final_project=nn.Conv1d(self.net_channels, self.net_channels, kernel_size=1)
         self.dustbin=nn.Parameter(torch.tensor(1.5, dtype=torch.float32))
 
         #reseeding
-        if len(config.seedlayer)!=1:
-            self.mid_ditbin=nn.ParameterDict({str(i):nn.Parameter(torch.tensor(2,dtype=torch.float32)) for i in config.seedlayer[1:]})
-            self.mid_final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
+        if len(self.seedlayer)!=1:
+            self.mid_ditbin=nn.ParameterDict({str(i):nn.Parameter(torch.tensor(2,dtype=torch.float32)) for i in self.seedlayer[1:]})
+            self.mid_final_project=nn.Conv1d(self.net_channels, self.net_channels, kernel_size=1)
         
     def forward(self,data,test_mode=True):
         x1, x2, desc1, desc2 = data['x1'][:,:,:2], data['x2'][:,:,:2], data['desc1'], data['desc2']
@@ -324,10 +337,11 @@ class matcher(nn.Module):
         aug_desc1,aug_desc2=desc1_embedding+x1_pos_embedding+desc1, desc2_embedding+x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
 
 
-        seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower,separate1_index_tower,separate2_index_tower=[],[],[],[],[],[],[]
+        seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower=[],[],[],[],[]
         seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)) #保存每轮次的种子索引
         
         nn_index_tower.append(nn_index) # 保存图B中分别与图A中特征点最近的两个索引
+        nn_index_to=torch.cat(nn_index_to,nn_index,dim=-1)
         
 
         seed_para_index=0
@@ -360,7 +374,7 @@ class matcher(nn.Module):
     
         return {'p':p,'seed_weight1_conf':seed_weight1_tower,'seed_weight2_conf':seed_weight2_tower,'seed_index':seed_index_tower,\
                 'mid_p':mid_p_tower,'nn_index':nn_index_tower}
-
+        # return p,seed_weight1_tower,seed_weight2_tower,seed_index_tower,mid_p_tower,nn_index_tower
 
             
 

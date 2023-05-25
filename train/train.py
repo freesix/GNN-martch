@@ -166,11 +166,19 @@ def train(model, train_loader, valid_loader, config,model_config, train_sampler)
                     'optimizer' : optimizer.state_dict()}
                     save_dict.update(save_dict)
                     torch.save(save_dict, os.path.join(config.log_base, 'model_best.pth'))
+                    test_data = {
+                        'x1':torch.rand(1,1000,2).cuda()-0.5,
+                        'x2':torch.rand(1,1000,2).cuda()-0.5,
+                        'desc1': torch.rand(1,1000,128).cuda(),
+                        'desc2': torch.rand(1,1000,128).cuda()
+                        }
+                    trace_model = torch.jit.script(model, example_inputs=test_data)
+                    trace_model.save(os.path.join(config.log_base, "model_best.pt"))
 
         if b_save: #保存断点模型
             if is_main_process():
                 save_dict={'step': step + 1,
-                'state_dict': model.state_dict(),
+                'state_dict': model.module.state_dict(),
                 'best_acc': best_acc,
                 'optimizer' : optimizer.state_dict()}
                 torch.save(save_dict, checkpoint_path)#保存模型
