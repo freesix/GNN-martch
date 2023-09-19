@@ -1,5 +1,6 @@
 # 这是论文代码   
 ## 数据准备
+[GL3D](https://github.com/lzx551402/GL3D)数据集，按照文档配置好
 * 进入dumpdata目录，进入configs目录配置好gl3d.yaml文件，里面参数按照说明配好，运行```python3 dump.py```  
 ## 开始训练
 * 进入train目录，进入configs目录配置好sgm.yaml，然后找到config.py文件配置好
