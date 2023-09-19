@@ -31,10 +31,10 @@ def valid(valid_loader, model,match_loss, config,model_config):
             print('validating...')
         for test_data in loader_iter:
             num_pair+= 1
-            if(num_pair==1):
-                test_data = train_utils.tocuda(test_data)
-                trace_model = torch.jit.script(model,test_data)
-                trace_model.save(os.path.join(config.log_base,"mode.pt"))
+            # if(num_pair==1):
+                # test_data = train_utils.tocuda(test_data)
+                # trace_model = torch.jit.script(model,test_data)
+                # trace_model.save(os.path.join(config.log_base,"mode.pt"))
             test_data = train_utils.tocuda(test_data)
             res= model(test_data)
             loss_res=match_loss.run(test_data,res)

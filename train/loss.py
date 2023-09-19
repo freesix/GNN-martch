@@ -120,7 +120,7 @@ class GSNLoss:
         #非正确匹配损失
         loss_nomatch1_tower=[]
         for i in range(len(result['seed_weight1_conf'])):
-            confidence=result['seed_weight1_conf'][layer]
+            confidence=result['seed_weight1_conf'][i]
             mask=torch.eye(confidence.shape[1]).unsqueeze(0).expand(confidence.shape[0],-1,-1).cuda(device=("cuda:{}".format(dist.get_rank())))
             loss_nomatch=(confidence*mask).sum()/confidence.shape[1]
             loss_nomatch1_tower.append(loss_nomatch)
@@ -128,7 +128,7 @@ class GSNLoss:
 
         loss_nomatch2_tower=[]
         for i in range(len(result['seed_weight2_conf'])):
-            confidence=result['seed_weight2_conf'][layer]
+            confidence=result['seed_weight2_conf'][i]
             mask=torch.eye(confidence.shape[1]).unsqueeze(0).expand(confidence.shape[0],-1,-1).cuda(device=("cuda:{}".format(dist.get_rank())))
             loss_nomatch=(confidence*mask).sum()/confidence.shape[1]
             loss_nomatch2_tower.append(loss_nomatch)

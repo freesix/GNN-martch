@@ -1,11 +1,12 @@
 data_name: gl3d_train
-rawdata_dir: /mnt/h/0/code/codeData/GL3D-2/
-feature_dump_dir: /mnt/h/0/code/codeData/GL3D-2/feature_dump_dir/
-dataset_dump_dir: /mnt/h/0/code/codeData/GL3D-2/dataset_dump_dir/
+rawdata_dir: /mnt/h/0/code/codeData/GL3D-2/  # GL3D数据集的路径
+feature_dump_dir: /mnt/h/0/code/codeData/GL3D-2/feature_dump_dir/ # 特征提取后的路径
+dataset_dump_dir: /mnt/h/0/code/codeData/GL3D-2/dataset_dump_dir/ # 数据集生成后的路径，包含一系列处理后的数据、参数
 pairs_per_seq: 1000
-dump_train: True
-dump_valid: True
-check_desc: True
+dump_train: True # 是否生成训练集
+dump_valid: True # 是否生成验证集
+check_desc: True # 是否检查特征提取是否正确
+# 想要排除的数据文件
 # exclude_seq:  ['tourism_0230','tourism_0084','tourism_0114','tourism_0440','tourism_0118',
 #                 'tourism_0654','tourism_0281','tourism_0481','tourism_0176','tourism_0048','tourism_0013','tourism_0282','tourism_0659',
 #                 '000000000000000000000013','000000000000000000000014','tourism_0703','tourism_0500','tourism_0571','tourism_0686',
@@ -13,19 +14,19 @@ check_desc: True
 #                 'tourism_0697','tourism_0355','tourism_0660','tourism_0653','tourism_0707','tourism_0492','tourism_0537','5692a4c2adafac1f14201821',
 #                 '584e875c7072670e72c1ec94','tourism_0632','tourism_0063','tourism_0673']
 exclude_seq: []
-num_process: 8
-angle_th: [3,60]
-overlap_th: [0.1,0.5]
-corr_th: 5
+num_process: 8 # 多进程数
+angle_th: [3,60] # 图像旋转角度范围
+overlap_th: [0.1,0.5] # 图像重叠度范围
+corr_th: 5 
 incorr_th: 10
 min_corr: 25
 min_incorr: 10
 
 extractor:
-  name: root #root or sp
-  num_kpt: 1000
-  resize: [-1] 
+  name: root #root or sp 
+  num_kpt: 1000 # 要提取多少特征点
+  resize: [-1]  # 图像是否缩放，缩放因子
   overwrite: False
-  extract: False #是否需要提取特征
-  num_process: 4
+  extract: False # 是否需要提取特征
+  num_process: 4 # 多进程数
   det_th: 0.00001
