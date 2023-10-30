@@ -17,7 +17,7 @@ from components import load_component
 from utils import evaluation_utils,metrics
 
 parser = argparse.ArgumentParser(description='dump eval data.')
-parser.add_argument('--config_path', type=str, default='configs/eval/scannet_eval_sgm.yaml')
+parser.add_argument('--config_path', type=str, default='configs/eval/yfcc_eval_sgm.yaml')
 parser.add_argument('--num_process_match', type=int, default=4)
 parser.add_argument('--num_process_eval', type=int, default=4)
 parser.add_argument('--vis_folder',type=str,default=None)
@@ -98,7 +98,7 @@ def evaluate_handler(config,match_que):
 
 if __name__=='__main__':
   with open(args.config_path, 'r') as f:
-    config = yaml.load(f)
+    config = yaml.safe_load(f)
   if args.vis_folder is not None and not os.path.exists(args.vis_folder):
     os.mkdir(args.vis_folder)
 

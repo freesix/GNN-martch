@@ -26,7 +26,7 @@ def train_step(optimizer, model, match_loss, data,step,pre_avg_loss):
         loss_res=match_loss.run(data,result) # 计算损失
     
     
-    scaler.scale(loss_res['total_loss']).backward() #损失加入反向传c
+    scaler.scale(loss_res['total_loss']).backward() #损失加入反向传
     #apply reduce on all record tensor
     for key in loss_res.keys():
         loss_res[key]=train_utils.reduce_tensor(loss_res[key],'mean') #将分布式训练的损失函数梯度合并更新梯度然后广播回各个分布式设备
