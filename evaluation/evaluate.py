@@ -1,4 +1,5 @@
 import os
+import torch.distributed
 from torch.multiprocessing import Process,Manager,set_start_method,Pool
 import functools
 import argparse
@@ -21,7 +22,19 @@ parser.add_argument('--config_path', type=str, default='configs/eval/yfcc_eval_s
 parser.add_argument('--num_process_match', type=int, default=4)
 parser.add_argument('--num_process_eval', type=int, default=4)
 parser.add_argument('--vis_folder',type=str,default=None)
+parser.add_argument("--nodes", default=1, type=int, help="分布式训练的节点")
+parser.add_argument("--ngpus_per_node", default=1, type=int, help="节点中gpu数量")
+parser.add_argument("--node_rank", default=0, type=int ,help="分布式训练的node_rank")
+
 args=parser.parse_args()    
+
+args.world_size = args.ngpus_per_node*args.nodes # 设置多进程的进程数(每个节点的GPU数*节点数)
+args.local_rank = args.ngpus_per_node
+args.rank = args.node_rank * args.ngpus_per_node + args.local_rank
+
+
+torch.distributed.init_process_group(backend='nccl', init_method='env://', 
+                                     rank=args.rank, world_size=args.world_size)
 
 def feed_match(info,matcher):
     x1,x2,desc1,desc2,size1,size2=info['x1'],info['x2'],info['desc1'],info['desc2'],info['img1'].shape[:2],info['img2'].shape[:2]

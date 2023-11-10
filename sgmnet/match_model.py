@@ -271,7 +271,7 @@ class matcher(nn.Module):
                                               nn.Conv1d(64, 128, kernel_size=1), nn.SyncBatchNorm(128), nn.ReLU(),
                                               nn.Conv1d(128, 256, kernel_size=1), nn.SyncBatchNorm(256), nn.ReLU(),
                                               nn.Conv1d(256, config.net_channels, kernel_size=1))
-        
+         
         # 领域聚合
         self.domain_encoder=domain_attention(config.net_channels)
         # 定义网络层

@@ -13,24 +13,24 @@ def sinkhorn(M,r,c,iteration):
         v = c / ((p * u.unsqueeze(-1)).sum(-2) + eps)
     p = p * u.unsqueeze(-1) * v.unsqueeze(-2)
     return p
-
+# sinkhorn算法
 def sink_algorithm(M,dustbin,iteration):
     M = torch.cat([M, dustbin.expand([M.shape[0], M.shape[1], 1])], dim=-1)
     M = torch.cat([M, dustbin.expand([M.shape[0], 1, M.shape[2]])], dim=-2)
-    r = torch.ones([M.shape[0], M.shape[1] - 1],device=("cuda"))
-    r = torch.cat([r, torch.ones([M.shape[0], 1],device=("cuda")) * M.shape[1]], dim=-1)
-    c = torch.ones([M.shape[0], M.shape[2] - 1],device=("cuda"))
-    c = torch.cat([c, torch.ones([M.shape[0], 1],device=("cuda")) * M.shape[2]], dim=-1)
+    r = torch.ones([M.shape[0], M.shape[1] - 1],device=("cuda:{}".format(dist.get_rank())))
+    r = torch.cat([r, torch.ones([M.shape[0], 1],device=("cuda:{}".format(dist.get_rank()))) * M.shape[1]], dim=-1)
+    c = torch.ones([M.shape[0], M.shape[2] - 1],device=("cuda:{}".format(dist.get_rank())))
+    c = torch.cat([c, torch.ones([M.shape[0], 1],device=("cuda:{}".format(dist.get_rank()))) * M.shape[2]], dim=-1)
     
 
     p=sinkhorn(M,r,c,iteration)
     return p
 
-#种子模块
+#种子模块，从所有特征点中选取topk个点作为种子点，采用了非极大值抑制算法防止特征点聚集
 def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc=True,test=False):
 
     if use_mc: #检查是否有非相互匹配
-        mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device=("cuda"))
+        mask_not_mutual=nn_index2.gather(dim=-1,index=nn_index1)!=torch.arange(nn_index1.shape[1],device=("cuda:{}".format(dist.get_rank())))
         match_score[mask_not_mutual]=-1
         # test1=match_score[match_score==-1]
         # print(sum(test1))
@@ -54,7 +54,7 @@ def seeding(nn_index1,nn_index2,x1,x2,topk,match_score,confbar,nms_radius,use_mc
     return seed_index1,seed_index2,pos_dismat1,pos_dismat2
 
 
-#领域聚合        
+#领域点寻找，选取在邻域半径内最近的十个点，领域内不足十个点用第一邻近点补齐        
 def domain(pos_dismat1,pos_dismat2,domain_topk,domain_radiues,desc1,desc2):
     # seed_dismat1, seed_dismat2=pos_dismat1.gather(dim=-1,index=seed_index1.unsqueeze(1).expand(-1,1000,-1)),\
     #                                  pos_dismat2.gather(dim=-1,index=seed_index2.unsqueeze(1).expand(-1,1000,-1))
@@ -70,12 +70,12 @@ def domain(pos_dismat1,pos_dismat2,domain_topk,domain_radiues,desc1,desc2):
     indices1[values1>dis1_radiues]=indices1_nearest[values1>dis1_radiues]
     indices2[values2>dis2_radiues]=indices2_nearest[values2>dis2_radiues]
 
-    desc1_domain=torch.tensor([],device=("cuda"))
+    desc1_domain=torch.tensor([],device=("cuda:{}".format(dist.get_rank())))
     for i in range(indices1.shape[-1]):
         domain_desc1=desc1.gather(dim=-1, index=indices1[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
         domain_desc1=domain_desc1.unsqueeze(-1)
         desc1_domain=torch.cat([desc1_domain,domain_desc1],dim=-1)
-    desc2_domain=torch.tensor([],device=("cuda"))
+    desc2_domain=torch.tensor([],device=("cuda:{}".format(dist.get_rank())))
     for i in range(indices1.shape[-1]):
         domain_desc2=desc2.gather(dim=-1, index=indices2[:,:,i].squeeze(-1).unsqueeze(1).expand(-1,128,-1))
         domain_desc2=domain_desc2.unsqueeze(-1)
@@ -83,7 +83,7 @@ def domain(pos_dismat1,pos_dismat2,domain_topk,domain_radiues,desc1,desc2):
     return desc1_domain, desc2_domain            
     
 
-# 领域注意力聚合
+# 领域注意力聚合，将选取好的邻域点特征聚合到匹配上
 class domain_attention(nn.Module):
     def __init__(self, channel):
         nn.Module.__init__(self)
@@ -91,7 +91,7 @@ class domain_attention(nn.Module):
         self.query_filter,self.key_filter,self.value_filter=nn.Conv2d(channel,channel,kernel_size=(1,1)),nn.Conv2d(channel,channel,kernel_size=(1,1)),\
                                                             nn.Conv2d(channel,channel,kernel_size=(1,1))
         self.nh_filter=nn.Conv2d(channel,channel,kernel_size=(1,1))
-        self.cat_filter=nn.Sequential(nn.Conv2d(2*channel,2*channel,kernel_size=(1,1)), nn.BatchNorm2d(2*channel), nn.ReLU(),
+        self.cat_filter=nn.Sequential(nn.Conv2d(2*channel,2*channel,kernel_size=(1,1)), nn.BatchNorm1d(2*channel), nn.ReLU(),
                                       nn.Conv2d(2*channel,channel,kernel_size=(1,1)))
 
     def forward(self,desc,weight_v=None):
@@ -105,18 +105,18 @@ class domain_attention(nn.Module):
         add_value=self.nh_filter(add_value)
         desc_new=query_desc+self.cat_filter(torch.cat([query_desc,add_value],dim=1))
         return desc_new.squeeze(-2)
-
+# 二维的上下文正则化
 class Separate_out_2(nn.Module):
     def __init__(self, channels, out_channels):
         nn.Module.__init__(self)
         self.shot_cut = nn.Conv2d(channels, out_channels ,kernel_size=(1,1))
         self.conv = nn.Sequential(
             nn.InstanceNorm2d(channels,eps=1e-3),
-            nn.BatchNorm2d(channels),
+            nn.BatchNorm1d(channels),
             nn.ReLU(),
             nn.Conv2d(channels,channels,kernel_size=(1,1)),
             nn.InstanceNorm2d(channels,eps=1e-3),
-            nn.BatchNorm2d(channels),
+            nn.BatchNorm1d(channels),
             nn.ReLU(),
             nn.Conv2d(channels,out_channels,kernel_size=(1,1)) 
         )
@@ -124,7 +124,7 @@ class Separate_out_2(nn.Module):
     def forward(self,x):
         out = self.conv(x) + self.shot_cut(x)
         return out
-    
+# 一维的上下文正则化 
 class Separate_out(nn.Module):
     def __init__(self, channels, out_channels):
         nn.Module.__init__(self)
@@ -154,7 +154,7 @@ class Separate_out(nn.Module):
         # new_desc2 = desc2.gather(dim=-1,index=indics.unsqueeze(1).expand(-1,channel,-1))
         return evalu_score
    
-
+# 注意力传播
 class attention_propagantion(nn.Module):
 
     def __init__(self,channel,head):
@@ -181,7 +181,7 @@ class attention_propagantion(nn.Module):
         return desc1_new
     
     
-#带权重的注意力传播
+#权重可学习的注意力传播
 class attention_learn(nn.Module):
     def __init__(self,channel):
         nn.Module.__init__(self)
@@ -209,7 +209,7 @@ class attention_learn(nn.Module):
 
     
                 
-    
+# 一个完整的网络pipeline    
 class hybrid_block(nn.Module):
     def __init__(self, channel, head):
         nn.Module.__init__(self)
@@ -248,54 +248,41 @@ class hybrid_block(nn.Module):
         desc1_new,desc2_new=self.attention_block_up(desc1,desc1_new,confidence1),self.attention_block_up(desc2,desc2_new,confidence2)
         return desc1_new,desc2_new,seed_weight1,seed_weight2
         
-
+# 匹配模块，包含种子点的选取、领域聚合、坐标位置编码、注意力传播、sinkhorn算法等全部pipeline
 class matcher(nn.Module):
-    def __init__(self):
+    def __init__(self,config):
         nn.Module.__init__(self)
-        self.seed_top_k=[128,128] #topK的数量
-        self.conf_bar=[1,0.1] #[1, 0.1]置信区间
-        self.seed_radius_coe=0.01 #NMS半径超参数
-        self.use_score_encoding=False#
-        self.detach_iter=140000 #分离的迭代次数
-        self.seedlayer=[0] # 种子层数
-        self.layer_num=1 #网络层数
-        self.sink_iter=[10,100] #sinkhorn算法迭代次数
-        self.domain_topk=10 #邻域聚合数量
-        self.domain_radiues=0.01  #邻域聚合半径
-        self.net_channels=128
-        self.head=4
-        # self.seed_top_k=config.seed_top_k #topK的数量
-        # self.conf_bar=config.conf_bar #[1, 0.1]置信区间
-        # self.seed_radius_coe=config.seed_radius_coe #NMS半径超参数
-        # self.use_score_encoding=config.use_score_encoding #
-        # self.detach_iter=config.detach_iter #分离的迭代次数
-        # self.seedlayer=config.seedlayer # 种子层数
-        # self.layer_num=config.layer_num #网络层数
-        # self.sink_iter=config.sink_iter #sinkhorn算法迭代次数
-        # self.domain_topk=config.domain_topk #邻域聚合数量
-        # self.domain_radiues=config.domain_radiues  #邻域聚合半径
-
+        self.seed_top_k=config.seed_top_k #topK的数量
+        self.conf_bar=config.conf_bar #[1, 0.1]置信区间
+        self.seed_radius_coe=config.seed_radius_coe #NMS半径超参数
+        self.use_score_encoding=config.use_score_encoding #
+        self.detach_iter=config.detach_iter #分离的迭代次数
+        self.seedlayer=config.seedlayer # 种子层数
+        self.layer_num=config.layer_num #网络层数
+        self.sink_iter=config.sink_iter #sinkhorn算法迭代次数
+        self.domain_topk=config.domain_topk #邻域聚合数量
+        self.domain_radiues=config.domain_radiues  #邻域聚合半径
         # self.separate_num1=config.separate_num
 
-        # 坐标位置编码 
-        self.position_encoder = nn.Sequential(nn.Conv1d(3, 32, kernel_size=1) if self.use_score_encoding else nn.Conv1d(2, 32, kernel_size=1),
+        # 坐标位置编码，将(x,y)坐标encoding成特征向量
+        self.position_encoder = nn.Sequential(nn.Conv1d(3, 32, kernel_size=1) if config.use_score_encoding else nn.Conv1d(2, 32, kernel_size=1),
                                               nn.BatchNorm1d(32),nn.ReLU(),
                                               nn.Conv1d(32, 64, kernel_size=1), nn.BatchNorm1d(64), nn.ReLU(),
                                               nn.Conv1d(64, 128, kernel_size=1), nn.BatchNorm1d(128), nn.ReLU(),
                                               nn.Conv1d(128, 256, kernel_size=1), nn.BatchNorm1d(256), nn.ReLU(),
-                                              nn.Conv1d(256, self.net_channels, kernel_size=1))
-        
+                                              nn.Conv1d(256, config.net_channels, kernel_size=1))
+         
         # 领域聚合
-        self.domain_encoder=domain_attention(self.net_channels)
-        
-        self.hybrid_block=nn.Sequential(*[hybrid_block(self.net_channels, self.head) for _ in range(self.layer_num)])
-        self.final_project=nn.Conv1d(self.net_channels, self.net_channels, kernel_size=1)
+        self.domain_encoder=domain_attention(config.net_channels)
+        # 定义网络层
+        self.hybrid_block=nn.Sequential(*[hybrid_block(config.net_channels, config.head) for _ in range(config.layer_num)])
+        self.final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
         self.dustbin=nn.Parameter(torch.tensor(1.5, dtype=torch.float32))
 
         #reseeding
-        if len(self.seedlayer)!=1:
-            self.mid_ditbin=nn.ParameterDict({str(i):nn.Parameter(torch.tensor(2,dtype=torch.float32)) for i in self.seedlayer[1:]})
-            self.mid_final_project=nn.Conv1d(self.net_channels, self.net_channels, kernel_size=1)
+        if len(config.seedlayer)!=1:
+            self.mid_ditbin=nn.ParameterDict({str(i):nn.Parameter(torch.tensor(2,dtype=torch.float32)) for i in config.seedlayer[1:]})
+            self.mid_final_project=nn.Conv1d(config.net_channels, config.net_channels, kernel_size=1)
         
     def forward(self,data,test_mode=True):
         x1, x2, desc1, desc2 = data['x1'][:,:,:2], data['x2'][:,:,:2], data['desc1'], data['desc2']
@@ -305,48 +292,52 @@ class matcher(nn.Module):
         else:
             encode_x1,encode_x2=data['aug_x1'],data['aug_x2']
 
-
+        #计算特征描述子之间的距离
         desc_dismat=(2-2*torch.matmul(desc1,desc2.transpose(1,2))).sqrt_()
+        # 获取每个src(源)特征点对应的最近的两个dst(目标)特征点的索引和值
         values,nn_index=torch.topk(desc_dismat,k=2,largest=False,dim=-1,sorted=True)
-        nn_index2=torch.min(desc_dismat,dim=1).indices.squeeze(1)
+        nn_index2=torch.min(desc_dismat,dim=1).indices.squeeze(1) # 获取第二邻近点的索引
+        # 获取匹配得分和第一邻近点索引
         inverse_ratio_score,nn_index1=values[:,:,1]/values[:,:,0],nn_index[:,:,0]#get inverse score
    
         #initial seeding
         # seed_index1,seed_index2,_,_=seeding(nn_index1,nn_index2,x1,x2,self.seed_top_k[0],inverse_ratio_score,self.conf_bar[0],\
         #                         self.seed_radius_coe,test=test_mode) 
+        # 根据匹配得分和置信度阈值选取种子点，得到种子点的索引和各自图片种子点之间的距离矩阵
         seed_index1,seed_index2,pos_dismat1,pos_dismat2=seeding(nn_index1,nn_index2,x1,x2,self.seed_top_k[0],inverse_ratio_score,self.conf_bar[0],\
                                 self.seed_radius_coe,test=test_mode) 
 
 
  
-        # 位置编码
         desc1,desc2=desc1.transpose(1,2), desc2.transpose(1,2) #交换channel和feature of number，遵循torch默认channel在前
-        #获取领域的描述子们
+        #获取领域的十个描述子们
         domain_desc1,domain_desc2=domain(pos_dismat1,pos_dismat2,self.domain_topk,self.domain_radiues,desc1,desc2)
         #领域聚合
         desc1_embedding, desc2_embedding=self.domain_encoder(domain_desc1), self.domain_encoder(domain_desc2)
+        # 归一化
         desc1_embedding, desc2_embedding=torch.nn.functional.normalize(desc1_embedding,dim=-1),torch.nn.functional.normalize(desc2_embedding,dim=-1)
         
-        if not self.use_score_encoding:
+        if not self.use_score_encoding: #如果不使用得分编码(这个得分是数据获取时候的得分，不是种子点匹配得分)
             encode_x1,encode_x2 = encode_x1[:,:,:2], encode_x2[:,:,:2]
         encode_x1,encode_x2 = encode_x1.transpose(1,2), encode_x2.transpose(1,2)
-        
+        # 坐标位置编码 
         x1_pos_embedding, x2_pos_embedding =self.position_encoder(encode_x1), self.position_encoder(encode_x2) 
+        # 归一化
         x1_pos_embedding,x2_pos_embedding=torch.nn.functional.normalize(x1_pos_embedding,dim=-1),torch.nn.functional.normalize(x2_pos_embedding,dim=-1)
         # aug_desc1,aug_desc2=x1_pos_embedding+desc1, x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
+        # 组合特征向量 (邻域特征向量+坐标位置编码+描述子特征向量)
         aug_desc1,aug_desc2=desc1_embedding+x1_pos_embedding+desc1, desc2_embedding+x2_pos_embedding+desc2 #最终拥有邻域、坐标、描述子的特征
 
-
-        seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower=[],[],[],[],[]
+        # 需要保存的中间变量
+        seed_weight1_tower,seed_weight2_tower,mid_p_tower,seed_index_tower,nn_index_tower,separate1_index_tower,separate2_index_tower=[],[],[],[],[],[],[]
         seed_index_tower.append(torch.stack([seed_index1,seed_index2],dim=-1)) #保存每轮次的种子索引
         
         nn_index_tower.append(nn_index) # 保存图B中分别与图A中特征点最近的两个索引
-        nn_index_to=torch.cat(nn_index_to,nn_index,dim=-1)
         
-
         seed_para_index=0
         for i in range(self.layer_num):
-            #mid seeding
+            #mid seeding 
+            # 整个循环就是如果训练层数i落到了self.seedlayer中就进行reseed操作(按照sinkhorn算法结果进行种子点选取)
             if i in self.seedlayer and i!= 0:
                 seed_para_index+=1
                 aug_desc1,aug_desc2=self.mid_final_project(aug_desc1),self.mid_final_project(aug_desc2)
@@ -363,18 +354,20 @@ class matcher(nn.Module):
                 seed_index_tower.append(torch.stack([seed_index1, seed_index2],dim=-1)), nn_index_tower.append(nn_index1)
                 if not test_mode and data['step']<self.detach_iter:
                     aug_desc1,aug_desc2=aug_desc1.detach(),aug_desc2.detach()
+            # hybrid block层
             aug_desc1,aug_desc2,seed_weight1,seed_weight2 = self.hybrid_block[i](aug_desc1,aug_desc2,seed_index1,seed_index2)
+            # 保存种子点权重
             seed_weight1_tower.append(seed_weight1),seed_weight2_tower.append(seed_weight2)
 
        
-        
+        # final输出特征 
         aug_desc1,aug_desc2 = self.final_project(aug_desc1), self.final_project(aug_desc2)
-        cmat = torch.matmul(aug_desc1.transpose(1,2), aug_desc2) #欧式距离
-        p = sink_algorithm(cmat, self.dustbin,self.sink_iter[-1])
+        cmat = torch.matmul(aug_desc1.transpose(1,2), aug_desc2) # 输出特征欧式距离
+        p = sink_algorithm(cmat, self.dustbin,self.sink_iter[-1]) # sinkhorn算法
     
         return {'p':p,'seed_weight1_conf':seed_weight1_tower,'seed_weight2_conf':seed_weight2_tower,'seed_index':seed_index_tower,\
                 'mid_p':mid_p_tower,'nn_index':nn_index_tower}
-        # return p,seed_weight1_tower,seed_weight2_tower,seed_index_tower,mid_p_tower,nn_index_tower
+
 
             
 
